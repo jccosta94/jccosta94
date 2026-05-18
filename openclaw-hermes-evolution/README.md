@@ -8,9 +8,9 @@ The system ships code to [Psinest](https://github.com/jccosta94/psinest), a prod
 
 ### What I architected
 
-**v1 — a hierarchical 7-agent team** on top of [OpenClaw](https://openclaw.ai/) (by [@steipete](https://x.com/steipete)): a Telegram-routed org chart with **CEO → PM → Dev + Bugfixing Dev → QA + QA2** (plus a Haiku-based router fielding incoming messages). I designed the dispatch-authorization graph (`subagents.allowAgents` whitelists), the per-agent model routing (Sonnet 4.6 for the CEO, Opus 4.6 for all five workers, Haiku 4.5 for routing), the system prompts for each role, and the `dev-watchdog.sh` auto-recovery cron that catches stalled Dev sessions and re-dispatches with context. Runs as a single systemd service on a Hostinger VPS that *also* hosts the production Psinest stack — a deliberate co-location for cost reasons. **This is the architecture that solved velocity.**
+**v1 — a hierarchical 7-agent team** on top of [OpenClaw](https://openclaw.ai/) (by [@steipete](https://x.com/steipete)): a Telegram-routed org chart with **CEO → PM → Dev + Bugfixing Dev → QA + QA2** (plus a Haiku-based router fielding incoming messages). I designed the dispatch-authorization graph (`subagents.allowAgents` whitelists), the per-agent model routing (Sonnet 4.6 for the CEO, Opus 4.6 for all five workers, Haiku 4.5 for routing), the system prompts for each role, and the `dev-watchdog.sh` auto-recovery cron that catches stalled Dev sessions and re-dispatches with context. Runs as a single systemd service on a Hostinger VPS that *also* hosts the production Psinest stack — a deliberate co-location for cost reasons. **The human stays in the loop at three gates per cycle**: CEO proposes priorities from the kanban board → Joao approves or redirects; PRs land → Joao reviews + merges (plain-text approval, never agent-driven); merge complete → Joao manually triggers `workflow_dispatch`. Agents propose; the human disposes. **This is the architecture that solved velocity.**
 
-**v2 — a single autonomous dispatcher** on top of [Hermes Agent](https://hermes-agent.nousresearch.com/) (open source, by [Nous Research](https://nousresearch.com)): when 5 workers on Opus 4.6 at production cadence stopped being financially defensible, I re-architected the system around a Docker-isolated Hermes instance orchestrated by Codex (gpt-5.4-mini, OpenAI subscription) that shells out to Claude Code CLI (Claude Max subscription) as its code-writing tool. I wrote the SOUL.md identity prompt, the `runlog/` audit-trail structure, the `hermes-ready` issue-label routing protocol, and the Docker isolation pattern that keeps this instance independent of the native Hermes install. **This is the architecture that made velocity sustainable.**
+**v2 — a single autonomous dispatcher** on top of [Hermes Agent](https://hermes-agent.nousresearch.com/) (open source, by [Nous Research](https://nousresearch.com)): when 5 workers on Opus 4.6 at production cadence stopped being financially defensible, I re-architected the system around a Docker-isolated Hermes instance orchestrated by Codex (gpt-5.4-mini, OpenAI subscription) that shells out to Claude Code CLI (Claude Max subscription) as its code-writing tool. I wrote the SOUL.md identity prompt, the `runlog/` audit-trail structure, the `hermes-ready` issue-label routing protocol, and the Docker isolation pattern that keeps this instance independent of the native Hermes install. **The three human gates from v1 are preserved**: Hermes proposes work from the `hermes-ready` queue and pings Joao for approval before dispatching; merges still require Joao's plain-text confirmation; deploys still need a manual `workflow_dispatch`. "Autonomous dispatcher" describes how Hermes handles *execution between gates*, not what it decides to ship. **This is the architecture that made velocity sustainable.**
 
 ### The architectural insight
 
@@ -35,6 +35,7 @@ This repo documents the architecture of each generation: the topology I designed
 | **I/O surface** | Telegram (`@Openclaw_Psinest_bot`) → CEO → cascade | Telegram (`@Psinest-Hermes_bot`) → Hermes → Claude Code |
 | **Audit trail** | Per-agent sessions in `/root/.openclaw/agents/<role>/sessions/` | `runlog/` directory: status.md, log.md, prompts/<issue>.md, claude-output/<issue>.txt |
 | **Auto-recovery** | `dev-watchdog.sh` cron: every 10 min, detects stale Dev sessions, commits WIP, re-dispatches | Built-in: SOUL.md instructs Hermes to check PR state before re-dispatching |
+| **Human-in-the-loop gates** | **3 gates per cycle**: (1) priority approval — CEO proposes from kanban, Joao picks; (2) merge approval — Joao reviews every PR; (3) deploy trigger — Joao manually opens `workflow_dispatch` | **Same 3 gates preserved**. Agents propose; Joao disposes. No agent ever merges product code or triggers a deploy in either generation. |
 | **Best phase** | Build & validate the pipeline, dial in the team roles | Run the validated pipeline at sustainable burn |
 
 The headline insight: **same Claude models, two different billing tiers, two different architectural shapes.** v1 ran the full Anthropic API at premium rates with parallel agents. v2 routes the same Claude through Claude Max subscription and serializes work through a single dispatcher. The team-of-roles concurrency went away; the issue → PR → review → merge → deploy workflow stayed.
@@ -180,69 +181,91 @@ External I/O:
 
 The interesting bit is that **OpenClaw and the production Psinest stack share the same VPS**. The agents work directly on the cloned repos at `/root/psinest-{app,api}/`, push commits to GitHub, and GitHub Actions deploys back to the same machine. No separate dev environment; no separate prod environment. Pre-revenue economics.
 
-### Issue lifecycle — ticket → PR → deploy
+### Issue lifecycle — kanban → PR → deploy (three human gates)
+
+The cycle is **human-approved at three points**: priority/scope (start), PR merge (middle), and production deploy (end). The agents handle everything between those gates.
 
 ```
-                              Joao on Telegram
-                                    │
-                                    │ "ship issue #234"
-                                    ▼
-                          ┌────────────────────┐
-                          │ main (Haiku 4.5)   │  ← routes message
-                          └─────────┬──────────┘
-                                    │
-                                    ▼
-                          ┌────────────────────┐
-                          │ CEO (Sonnet 4.6)   │  ← prioritises
-                          │  reads task        │     picks worker
-                          └─────────┬──────────┘
-                                    │
-                                    ▼
-                          ┌────────────────────┐
-                          │ PM (Opus 4.6)      │  ← scopes work
-                          │  reads codebase    │     briefs worker
-                          └─────────┬──────────┘
-                                    │
-                          ┌─────────┴────────────────┐    ← parallel
-                          ▼                          ▼
-                ┌────────────────────┐ ┌──────────────────────────┐
-                │ Dev (Opus 4.6)     │ │ Bugfixing Dev (Opus 4.6) │
-                │  writes feature    │ │  patches bug             │
-                │  opens PR          │ │  opens PR                │
-                └─────────┬──────────┘ └─────────────┬────────────┘
-                          │                          │
-                          ▼                          ▼
-                ┌────────────────────┐ ┌──────────────────────────┐
-                │ QA (Opus 4.6)      │ │ QA2 (Opus 4.6)           │
-                │  e2e tests         │ │  e2e tests               │
-                │  reports back      │ │  reports back            │
-                └─────────┬──────────┘ └─────────────┬────────────┘
-                          │                          │
-                          └─────────────┬────────────┘
-                                      │
-                                      ▼
-                          ┌────────────────────────┐
-                          │ PRs ready · ping Joao  │
-                          └────────────┬───────────┘
+                            GitHub kanban board
+                            (issues + labels + priorities)
                                        │
                                        ▼
-                          ┌────────────────────────┐
-                          │ Joao reviews + merges  │  ← plain-text "yes"
-                          └────────────┬───────────┘
-                                       │
-                                       ▼
-                          ┌────────────────────────┐
-                          │ workflow_dispatch       │
-                          │  · API first            │
-                          │  · 60s wait             │
-                          │  · app second           │
-                          └────────────┬───────────┘
-                                       │
-                                       ▼
-                              VPS · live in prod
+                          ┌────────────────────────────┐
+                          │ CEO (Sonnet 4.6)            │ ← scans board for
+                          │  reads kanban               │   unblocked work,
+                          │  proposes next priorities   │   ranks priorities
+                          └─────────────┬──────────────┘
+                                        │
+                                        ▼
+                  ★ HUMAN GATE 1 — priority approval ★
+                                        │
+                          ┌────────────────────────────┐
+                          │ Joao on Telegram            │ ← "go with #234"
+                          │  approves CEO's pick   OR   │     or
+                          │  redirects to different work│   "do #245 first"
+                          └─────────────┬──────────────┘
+                                        │
+                                        ▼
+                          ┌────────────────────────────┐
+                          │ CEO dispatches PM           │
+                          └─────────────┬──────────────┘
+                                        │
+                                        ▼
+                          ┌────────────────────────────┐
+                          │ PM (Opus 4.6)               │ ← scopes work,
+                          │  reads codebase             │   briefs worker(s)
+                          └─────────────┬──────────────┘
+                                        │
+                          ┌─────────────┴──────────────┐    ← parallel
+                          ▼                            ▼
+                ┌────────────────────┐    ┌──────────────────────────┐
+                │ Dev (Opus 4.6)     │    │ Bugfixing Dev (Opus 4.6) │
+                │  writes feature    │    │  patches bug             │
+                │  opens PR          │    │  opens PR                │
+                └─────────┬──────────┘    └─────────────┬────────────┘
+                          │                              │
+                          ▼                              ▼
+                ┌────────────────────┐    ┌──────────────────────────┐
+                │ QA (Opus 4.6)      │    │ QA2 (Opus 4.6)           │
+                │  e2e tests         │    │  e2e tests               │
+                │  reports back      │    │  reports back            │
+                └─────────┬──────────┘    └─────────────┬────────────┘
+                          │                              │
+                          └──────────────┬───────────────┘
+                                         │
+                                         ▼
+                          ┌────────────────────────────┐
+                          │ PRs ready · CEO pings Joao  │
+                          └─────────────┬──────────────┘
+                                        │
+                                        ▼
+                  ★ HUMAN GATE 2 — merge approval ★
+                                        │
+                          ┌────────────────────────────┐
+                          │ Joao reviews PR diff        │ ← plain-text "yes"
+                          │  + merges                   │   AskUserQuestion
+                          │  (NEVER agent self-merge    │   buttons NOT
+                          │   for product code)         │   sufficient
+                          └─────────────┬──────────────┘
+                                        │
+                                        ▼
+                  ★ HUMAN GATE 3 — deploy trigger ★
+                                        │
+                          ┌────────────────────────────┐
+                          │ Joao opens GitHub Actions   │ ← manual ONLY
+                          │  triggers workflow_dispatch │   never agent-driven
+                          │  · API first                │   never auto on merge
+                          │  · 60s wait                 │
+                          │  · app second               │
+                          └─────────────┬──────────────┘
+                                        │
+                                        ▼
+                                VPS · live in prod
 ```
 
-One Telegram message → one cascade through the org chart → parallel Dev + QA execution → Joao gates the merge + deploy. The 7-agent team handles everything between "ship #234" and "PRs ready to review."
+**The agents propose; the human disposes.** The CEO never autonomously decides what to build — it suggests from the board, Joao chooses. The team never auto-merges product code — Joao reviews every PR. The team never deploys — Joao triggers every release. This isn't an oversight in the design; it's the design. The agents handle the bulk of *execution* and the human handles the high-judgment gates where wrong calls have lasting consequences (wrong feature shipped, broken PR merged, bad release deployed at the wrong time).
+
+The only autonomous exception is **`dev-watchdog.sh`**, which recovers stalled Dev sessions without human intervention — but it commits work as a WIP marker and re-dispatches; it never merges or deploys.
 
 ### Auto-recovery: the dev-watchdog
 
