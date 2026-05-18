@@ -1,23 +1,60 @@
 # Psinest — Healthcare CRM with AI Augmentation Roadmap
+**A live, RGPD-aware healthcare CRM for the Portuguese mental-health market — production traffic today, AI augmentation roadmap designed and partially in flight.**
 
-**Live healthcare CRM** at [psinest.duckdns.org](https://psinest.duckdns.org) — a Portuguese-language platform for psychologists, clinics, and patients. Built end-to-end (founder + small team) and operated in production for real users. This case study documents the **current architecture** (live today), the **AI augmentation roadmap** (designed, partially in flight), and the **compliance-aware design decisions** that shape how AI lands on top of a healthcare data plane.
+This is a case study in **compliance-first product architecture** — specifically: how to design a multi-tenant clinical data plane that survives RGPD + ERS scrutiny from day one, then layer AI capabilities on top without breaking the compliance posture that earned the right to exist.
 
-🌐 [psinest.duckdns.org](https://psinest.duckdns.org) · 🇵🇹 pt-PT first · 👥 ClinicOwner / Psychologist / Patient / Platform Admin roles · 🏥 RGPD + ERS-aware
+The system runs at [psinest.duckdns.org](https://psinest.duckdns.org), with the first pilot in progress: **10 psychologists + 1 clinic** running on the live domain as a real test deployment. Four user roles share one platform (ClinicOwner / Psychologist / Patient / Platform Admin), each with strictly different read scopes, write scopes, and clinical-data exposure. The constraint that triggered the architecture work: mental-health data under RGPD + ERS isn't forgiving of leaky tenancy, and you can't bolt compliance on after the fact — it has to live at the access-enforcement layer.
 
-> **Note on the URL.** `psinest.duckdns.org` is a **placeholder domain for the pilot phase**. The current footprint is **10 psychologists + 1 clinic** running on this domain as the live test run. Once the pilot stabilises and feature scope is locked, the platform migrates to a permanent domain with a managed cert + production CDN. The architecture documented here is what the pilot runs on; the migration path is short (DNS + cert swap, no architectural change required).
+> **Note on the URL.** `psinest.duckdns.org` is a **placeholder domain for the pilot phase**. Once the pilot stabilises and feature scope is locked, the platform migrates to a permanent domain with a managed cert + production CDN. The architecture documented here is what the pilot runs on; the migration path is short (DNS + cert swap, no architectural change required).
+
+### What I architected
+
+**The product platform** — a React 19 + TypeScript SPA on top of an ASP.NET Core 8 + EF Core 8 API, talking to PostgreSQL 16 and Backblaze B2 (S3-compatible) for document storage. Firebase Auth handles identity. Sentry handles observability. Hosted on a single Hostinger VPS that also hosts the build pipeline (see [openclaw-hermes-evolution](../openclaw-hermes-evolution/)). The full system shipped in pilot via an AI build pipeline I designed in parallel — Psinest is the *product*; OpenClaw-Hermes is the *factory*.
+
+**The security architecture** — `RoleScope.cs`, the single centralised point where JWT-derived tenancy gets applied at the EF Core query layer. The server never trusts client-supplied filters on list endpoints (`/sessions`, `/patients`, `/documents`) — scope is derived from the JWT and enforced at query construction time. ClinicOwner is blocked entirely from documents. Patient can only read their own. Psychologist can only see partnered clinics' patients with valid partnership + consent rows. The patterns this prevents are the patterns that show up in healthcare data breaches: privilege climb via crafted query strings, role confusion, missing tenancy on the wrong endpoint.
+
+**The document permission model** — `IDocumentStore` abstraction over Backblaze B2 with consent-aware permissions. Patient self-uploads at `/patient/documents`; Psychologist uploads at `/psy/patient/N/dynamics` after partnership + consent rows exist; ClinicOwner can never read any document, ever. Read/delete scopes are computed per-document, not per-role — a Psy in their patient's space can delete anything in that space, but the same Psy cannot delete the patient's own self-uploaded docs in a different surface.
+
+**The AI augmentation roadmap** — eight capability domains layered on top of the existing data plane (transcription, clinical insights, treatment planning, patient companion, smart booking, document AI, ops intelligence, knowledge search), each gated by **the AI Policy Manager** — a separate centerpiece that operates one tier higher than `RoleScope.cs`. RoleScope decides *what data the API can return*; the AI Policy Manager decides *what AI can do with that data before it reaches an external service*. Per-capability consent, always-on PII redaction, per-capability cost budgets, immutable audit log emission, model-version pinning. Designed; partially in flight; document-AI lands first because PII redaction is the unblocker for everything else.
+
+### The architectural insight
+
+**Compliance is the load-bearing concern; everything else hangs off it.** Healthcare data plus EU regulation plus a Portuguese-specific sectoral regulator (ERS) means you don't get to retrofit. `RoleScope.cs` exists as a centralised access gate because the cost of getting tenancy wrong on even one endpoint is "patient data leaks across the clinic boundary" — and the only way to make that cost zero is to ensure no controller can opt out of the gate. Centralising the enforcement at the query layer (not the controller layer, not the client layer) is what makes the compliance promise auditable: if `RoleScope.Apply()` runs, scope is enforced; if it doesn't run, no data comes back at all.
+
+**The AI Policy Manager is the same idea, applied one tier up.** When AI capabilities arrive, the concern shifts from "who can read what" to "who can run what AI capability against whose data, and what evidence does that decision leave behind." That's a separate concern with separate consent semantics (per-capability, not per-data), separate cost shape (per-capability budgets), and separate audit requirements (every suggestion logged with model + version + input hash + output + downstream action). Treating AI access as a parallel tier — rather than overloading `RoleScope.cs` — is what keeps the compliance posture coherent as capability surface grows.
+
+**The sequence — current platform first, AI roadmap second, lowest-clinical-risk AI capabilities before highest-risk.** The current platform is live and serving pilot users; the AI roadmap is designed and partially in flight. When AI capabilities land, they land in clinical-risk order — Document AI (low risk, PII-redaction unblocker), Smart Booking (operational, no clinical risk), then upward through Treatment Planning and finally Transcription & Notes (highest clinical value, also highest risk). The Policy Manager pattern gets validated at low-stakes before clinical-grade AI rides on it.
 
 ---
 
-## What Psinest is
+## TL;DR
 
-A CRM tailored for the Portuguese mental-health market:
+| | **Current state — live pilot** | **Future state — AI-augmented** |
+|---|---|---|
+| **What's shipping** | React 19 SPA + ASP.NET Core 8 API + Postgres 16 · document storage on Backblaze B2 · Firebase Auth · Sentry observability · multi-tenant role-scoped access | All of the above + 8 AI capability domains layered on top, gated through an AI Policy Manager |
+| **Users** | ClinicOwner · Psychologist · Patient · Platform Admin | Same, plus consent state per AI capability per user |
+| **Data-access enforcement** | `RoleScope.cs` — JWT-derived tenancy applied at the EF Core query layer | `RoleScope.cs` unchanged (data access is one concern) |
+| **AI-capability enforcement** | n/a — no AI yet | **AI Policy Manager** (NEW) — operates one tier up from `RoleScope`; gates per-capability consent, PII redaction, cost budget, audit emission, model version |
+| **Document storage** | `IDocumentStore` abstraction over Backblaze B2 · consent-aware read/delete · ClinicOwner blocked entirely | Same store · PII redaction proxy before any external-LLM call processes a document |
+| **Compliance posture** | RGPD-aware design baked in (data minimisation, residency, audit trail, right-to-erasure cascades) · ERS-aware (psy credential gate via OPP/cédula) | Same baseline + per-capability AI consent · immutable audit ledger for AI suggestions · cost budget caps per capability |
+| **Build pipeline** | Shipped by the [OpenClaw 7-agent team](../openclaw-hermes-evolution/), now migrated to [Hermes single dispatcher](../openclaw-hermes-evolution/) | Same pipeline · AI Policy Manager + capability domains land via the same workflow |
+| **Pilot footprint** | 10 psychologists + 1 clinic on `psinest.duckdns.org` | Lands inside the same pilot before moving to a permanent domain |
+| **Operating state today** | Production-readiness sprint in flight | Document AI is the first capability scheduled to land; everything else gated behind it |
+| **Reversibility** | Domain swap is a DNS + cert change · no architectural change required | AI capabilities are opt-in per-feature — disabling the AI Policy Manager turns the platform back into the current state |
 
-- **Psychologists** manage their caseload, run sessions, upload patient documents, draft homework
-- **Clinics** (ClinicOwner role) manage psychologist rosters, partnerships with independent psys, view aggregate reports — never see patient data directly
-- **Patients** see their own session history, upload their own documents, receive psy-attached homework, book sessions
-- **Platform Admin** approves new psychologist registrations (verifies OPP / cédula credentials)
+**The headline insight: same data plane, compliance gate already in place, AI layered as a parallel tier rather than retrofitted into the access tier.** Everything that's true today about who-can-read-what stays true tomorrow about who-can-run-what-AI-against-what — they're separate concerns enforced at separate tiers.
 
-Live and operating in pilot today. Free to clinics during pilot; will become paid once feature scope stabilises.
+---
+
+## Why this matters
+
+Most product teams shipping AI features into regulated domains in 2026 hit two walls in sequence: **compliance first, AI second.**
+
+**Wall 1 — Compliance.** Mental-health data under RGPD + ERS is not forgiving of accidental cross-tenant leakage. A ClinicOwner accidentally reading a patient's session note isn't a UX bug — it's a regulatory exposure that, depending on jurisdiction and scale, ends the product. Bolt-on tenancy ("we'll add the filter in the controller") loses by construction, because every new endpoint is a new opportunity to forget. **Psinest solves this by centralising tenancy enforcement at the query layer**: every list query passes through `RoleScope.cs`, scope is derived from the JWT and applied at query construction time, no controller can opt out, no client filter can override.
+
+**Wall 2 — AI without losing compliance.** Once compliance works, the second wall is layering AI capabilities without breaking it. The naive move is to extend `RoleScope.cs` with AI permissions — but that conflates two concerns. *Who can read this patient's document* and *what AI can do with this document once it's read* are different decisions with different consent semantics, different cost shapes, and different audit requirements. **Psinest solves this with the AI Policy Manager** — a parallel tier that operates one level higher than `RoleScope`, enforcing per-capability consent, always-on PII redaction, per-capability cost budgets, and immutable audit log emission for every AI invocation.
+
+The lesson is **the sequence**: build the compliance gate first, prove the platform can serve real users in a regulated domain, *then* layer AI on top — and when you do, give AI its own enforcement tier rather than overloading the data-access tier. Trying to ship AI features before the compliance gate exists ends with a product that can't pass a privacy audit; trying to bolt AI consent onto a data-access layer that wasn't designed for it ends with a tangled gate where neither concern is enforced cleanly.
 
 ---
 
@@ -40,75 +77,84 @@ Captured from the live product at [psinest.duckdns.org](https://psinest.duckdns.
 
 ## Current-state architecture
 
-The full enterprise-level view, organised by tier — network edge, application, data, storage/external services, CI/CD.
+The full v1 platform — SPA on top of a .NET API, talking to Postgres and B2, all running on a single shared VPS that also hosts the build pipeline. The diagram below shows how those pieces fit together; the table beneath it documents each tier in detail.
 
+```text
+                    Public users (Psy · Patient · Owner · Admin)
+                                  │
+                                  │ HTTPS · psinest.duckdns.org
+                                  ▼
+                       ┌──────────────────────┐
+                       │   HOSTINGER VPS      │             ← 72.62.2.211
+                       │   single shared host │               Ubuntu 24.04
+                       │                      │               1 vCPU · 3.8 GB
+                       └──────────┬───────────┘               pilot + build co-located
+                                  │ network edge
+                                  ▼
+                       ┌──────────────────────┐
+                       │   nginx 1.24         │             ← Let's Encrypt TLS
+                       │   reverse proxy +    │               HTTP → HTTPS redirect
+                       │   static SPA serve   │               ports 80 / 443
+                       └──────────┬───────────┘
+                                  │
+                ┌─────────────────┴─────────────────┐
+                │                                   │
+                ▼                                   ▼
+       ┌────────────────┐                  ┌────────────────┐
+       │  React 19 SPA  │                  │  Kestrel API   │   ← .NET 8
+       │  ────────────  │                  │  ────────────  │     localhost:5000
+       │  TypeScript    │                  │  ASP.NET Core  │
+       │  Vite 8 ·      │  ── /api ──▶    │  EF Core 8     │
+       │  Tailwind 4 ·  │   HTTPS+JWT      │  RoleScope.cs  │     ← JWT-derived
+       │  Recharts ·    │                  │  IDocumentStore│       tenancy gate
+       │  i18n pt-PT    │                  │  Sentry .NET   │
+       └───────┬────────┘                  └────────┬───────┘
+               │ Firebase JWT                       │ reads/writes
+               │ Sentry SPA                         │
+               ▼                                    ▼
+                                  ┌──────────────────────┐
+                                  │  PostgreSQL 16       │   ← localhost:5432
+                                  │  db: psinest         │     peer auth
+                                  │  PascalCase columns  │     no password
+                                  │  lowercase tables    │
+                                  └──────────┬───────────┘
+                                             │ pg_dump cron
+                                             ▼ (4× / day)
+              ┌─────────────────────────────────────────────────────────┐
+              │ EXTERNAL SERVICES (outbound from VPS)                   │
+              │   Firebase Auth (project psinestv2) · JWT issue+verify  │
+              │   Backblaze B2 · psinest-uploads + psinest-backups      │
+              │   Sentry · org psinest (dotnet-aspnetcore + psinest-app)│
+              │   DuckDNS · dynamic DNS for psinest.duckdns.org         │
+              │   GitHub Actions · workflow_dispatch deploys (manual)   │
+              └─────────────────────────────────────────────────────────┘
 ```
-┌────────────────────────────────────────────────────────────────────────────┐
-│ HOSTINGER VPS · 72.62.2.211 · Ubuntu 24.04 · 1 vCPU / 3.8 GB                │
-├────────────────────────────────────────────────────────────────────────────┤
-│                                                                            │
-│ ┌─ NETWORK / SECURITY EDGE ────────────────────────────────────────────────┐│
-│ │ Internet                                                                  ││
-│ │   ▼                                                                       ││
-│ │ DNS: psinest.duckdns.org (DuckDNS dynamic DNS)                           ││
-│ │   ▼                                                                       ││
-│ │ nginx 1.24 (ports 80, 443) · TLS via Let's Encrypt · HTTP→HTTPS redirect ││
-│ │   ▼ static SPA bundle ←─/                                                ││
-│ │   ▼ reverse-proxy ←─/api → 127.0.0.1:5000                               ││
-│ └───────────────────────────────────────────────────────────────────────────┘│
-│                                                                            │
-│ ┌─ APPLICATION TIER ───────────────────────────────────────────────────────┐│
-│ │ React 19 SPA (served as static bundle by nginx)                           ││
-│ │   · TypeScript · Vite 8 · Tailwind 4 · Recharts                           ││
-│ │   · i18n: pt-PT default, en fallback (clinical glossary docs/pt-pt-       ││
-│ │     clinical-glossary.md is the canonical source)                         ││
-│ │   · Firebase Auth client SDK (browser-side sign-in)                       ││
-│ │   · Sentry SPA SDK (env-driven DSN, sendDefaultPii=false)                 ││
-│ │   ▼ calls /api over HTTPS · attaches Firebase JWT                         ││
-│ │ Kestrel API (5000, localhost) · ASP.NET Core 8 + EF Core 8                ││
-│ │   · Firebase Admin SDK (server-side JWT verify)                           ││
-│ │   · RoleScope.cs (centralised JWT-derived tenancy)                        ││
-│ │   · IDocumentStore abstraction (B2 ↔ filesystem swap)                     ││
-│ │   · Controllers: /users  /clinics  /psychologists  /patients              ││
-│ │                  /sessions  /documents  /reports  /partnerships           ││
-│ │                  /onboarding  /admin                                      ││
-│ │   · Sentry .NET SDK (server-side exception capture)                       ││
-│ └───────────────────────────────────────────────────────────────────────────┘│
-│                                                                            │
-│ ┌─ DATA TIER ──────────────────────────────────────────────────────────────┐│
-│ │ PostgreSQL 16 (5432, localhost) · db: psinest · peer auth (no password)  ││
-│ │   Core tables:                                                            ││
-│ │     users · clinics · psychologists · patients · sessions                 ││
-│ │     documents · partnerships · cancellations · onboarding_state · audit   ││
-│ │   Schema convention: PascalCase quoted columns ("Id", "FirebaseUid")     ││
-│ │                      lowercase unquoted tables (users, patients)          ││
-│ │   ⤷ pg-dump cron · 17 */6 * * * → Backblaze B2 (psinest-backups)        ││
-│ │     4 backups/day · retention managed via B2 lifecycle policy            ││
-│ └───────────────────────────────────────────────────────────────────────────┘│
-│                                                                            │
-│ ┌─ STORAGE / EXTERNAL SERVICES ─────────────────────────────────────────────┐│
-│ │ Backblaze B2 · S3-compatible · two buckets:                               ││
-│ │   psinest-uploads  · document storage · accessed via AWS S3 .NET SDK     ││
-│ │   psinest-backups  · nightly pg-dump archives                            ││
-│ │ Firebase Auth · project psinestv2                                        ││
-│ │   · JWT issuance (browser-side sign-in)                                  ││
-│ │   · JWT verification (server-side via Admin SDK)                         ││
-│ │   · Email + password auth · password reset                               ││
-│ │ Sentry · org psinest · 2 projects                                         ││
-│ │   · dotnet-aspnetcore (API errors)                                       ││
-│ │   · psinest-app (SPA errors)                                             ││
-│ │ DuckDNS · dynamic DNS for psinest.duckdns.org                            ││
-│ └───────────────────────────────────────────────────────────────────────────┘│
-│                                                                            │
-│ ┌─ CI/CD ─────────────────────────────────────────────────────────────────┐│
-│ │ GitHub Actions · workflow_dispatch ONLY (no auto-deploy on merge)         ││
-│ │   Repos: jccosta94/psinest-app + jccosta94/psinest-api                    ││
-│ │   Lint + build are the only merge gates · e2e is non-blocking smoke      ││
-│ │   Cross-repo deploy order: API first → 60s wait → App second              ││
-│ │   ⤷ SSH → VPS · systemctl restart psinest-api · rsync /var/www          ││
-│ └───────────────────────────────────────────────────────────────────────────┘│
-└────────────────────────────────────────────────────────────────────────────┘
-```
+
+**Per-tier detail:**
+
+| Tier                   | What's running                                                                                                                                                                                                                                |
+|------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Network edge**       | nginx 1.24 on ports 80 + 443 with Let's Encrypt TLS · HTTP → HTTPS redirect · static SPA bundle served from `/var/www` · `/api/*` reverse-proxied to Kestrel at `127.0.0.1:5000`. DuckDNS dynamic-DNS resolves `psinest.duckdns.org`.            |
+| **Frontend (SPA)**     | React 19 + TypeScript + Vite 8 + Tailwind 4 + Recharts · i18n pt-PT default with en fallback (canonical glossary: `docs/pt-pt-clinical-glossary.md`) · Firebase Auth client SDK for browser-side sign-in · Sentry SPA SDK with `sendDefaultPii=false`. |
+| **Backend (API)**      | Kestrel on `127.0.0.1:5000` · ASP.NET Core 8 + EF Core 8 · Firebase Admin SDK (server-side JWT verify) · `RoleScope.cs` (centralised JWT-derived tenancy at the query layer) · `IDocumentStore` abstraction (B2 ↔ filesystem swap) · Sentry .NET SDK. |
+| **Controllers**        | `/users` · `/clinics` · `/psychologists` · `/patients` · `/sessions` · `/documents` · `/reports` · `/partnerships` · `/onboarding` · `/admin`. All list endpoints pass through `RoleScope` — no controller opts out of the gate.                  |
+| **Data**               | PostgreSQL 16 on `127.0.0.1:5432` · db `psinest` · peer auth (no password). Core tables: `users` · `clinics` · `psychologists` · `patients` · `sessions` · `documents` · `partnerships` · `cancellations` · `onboarding_state` · `audit`. Schema convention: PascalCase quoted columns (`"Id"`, `"FirebaseUid"`), lowercase unquoted tables. |
+| **Backups**            | `pg_dump` cron at `17 */6 * * *` → Backblaze B2 `psinest-backups` bucket · 4 backups / day · retention managed via B2 lifecycle policy · restore drill documented as required ops practice.                                                       |
+| **Document storage**   | Backblaze B2 `psinest-uploads` (S3-compatible) accessed via the AWS S3 .NET SDK behind `IDocumentStore`. Consent-aware read/delete permissions enforced server-side — see [Document permission model](#document-permission-model) below.            |
+| **Auth**               | Firebase Auth · project `psinestv2` · email + password · server-side JWT verification via Firebase Admin SDK · password reset built-in. Server never trusts client-supplied user IDs.                                                              |
+| **Observability**      | Sentry · org `psinest` · 2 projects: `dotnet-aspnetcore` (API) + `psinest-app` (SPA). Both env-driven DSN, both `sendDefaultPii=false`.                                                                                                          |
+| **CI/CD**              | GitHub Actions on `jccosta94/psinest-app` + `jccosta94/psinest-api`. **`workflow_dispatch` only** (no auto-deploy on merge). Lint + build are the only merge gates; e2e is non-blocking smoke. Cross-repo deploy order: **API first → 60 s wait → App second** (App-first hits 404s). Deploy runs SSH to the VPS · `systemctl restart psinest-api` · rsync `/var/www`.            |
+
+**Security boundaries:**
+
+| Boundary                        | Enforcement                                                                                                                            |
+|---------------------------------|----------------------------------------------------------------------------------------------------------------------------------------|
+| **Public ingress**              | Only port 22 (SSH key-only) + 80/443 (nginx + TLS). API on 5000 and Postgres on 5432 bind to `127.0.0.1` only — no network exposure.     |
+| **Tenancy enforcement**         | `RoleScope.cs` — JWT-derived, applied at the EF Core query layer, never trusts client filters. Every list endpoint passes through it.    |
+| **Document scope**              | ClinicOwner blocked from documents entirely. Patient reads own only. Psy reads partnered clinic + assigned patient only. See [Document permission model](#document-permission-model). |
+| **Postgres isolation**          | `listen_addresses = 'localhost'` + peer auth — no network exposure, no password auth on the local socket.                                |
+| **Build / prod co-location**    | Build pipeline runs on the same VPS as the production stack. Pre-revenue cost choice, accepted explicitly. Migration path is one host split. |
+| **Three human-in-the-loop gates** | (1) CEO proposes priorities from the kanban board, Joao picks. (2) Joao reviews every PR, no agent self-merge. (3) Joao runs `workflow_dispatch` manually for every deploy. (See [openclaw-hermes-evolution](../openclaw-hermes-evolution/) for the build-pipeline detail.) |
 
 ---
 
@@ -235,7 +281,7 @@ Healthcare documents are the most sensitive surface; permissions are intricate.
 
 ---
 
-## Tech stack
+## Stack
 
 | Tier | Technology · Version |
 |---|---|
@@ -365,6 +411,36 @@ It's parallel to RoleScope but operates one tier higher in the request flow: Rol
 
 ---
 
+## Architecture diagrams
+
+All diagrams in this repo are inline text-style ASCII inside fenced code blocks — readable on GitHub, version-controlled, diff-able, no rendering tooling required.
+
+- **Current-state topology** — SPA + Kestrel API + Postgres + B2 + Firebase + Sentry on one VPS. See [Current-state architecture](#current-state-architecture) above.
+- **Security architecture (`RoleScope.cs`)** — JWT → middleware → RoleScope → controller guard → EF Core query construction. See [Security architecture — Role-scoped access via `RoleScope.cs`](#security-architecture--role-scoped-access-via-rolescopecs) above.
+- **Document permission model** — upload-path vs read/delete-path split, with canDelete policy + read scope rules per role. See [Document permission model](#document-permission-model) above.
+- **AI augmentation: current → future** — side-by-side current data plane vs future AI-augmented state with the AI Policy Manager and pgvector / job queue / redaction proxy / audit ledger as new components. See [AI augmentation roadmap (future state)](#ai-augmentation-roadmap-future-state) above.
+
+---
+
+## What I designed vs what the platforms provide
+
+| Layer                             | Adopted platform / framework                                                                             | What I designed on top                                                                                                                                          |
+|-----------------------------------|----------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Identity**                      | Firebase Auth (email + password, JWT issue/verify)                                                       | The role-on-register flow, the OPP/cédula verification queue (ERS gate), the grandfathering rule for existing users                                              |
+| **API + data access**             | ASP.NET Core 8 + EF Core 8 (controllers, middleware, query API)                                          | **`RoleScope.cs`** — the centralised JWT-derived tenancy gate; every list endpoint passes through it · the controller-routing pattern that makes the gate inescapable |
+| **Document storage**              | Backblaze B2 (S3-compatible) + AWS S3 .NET SDK                                                           | **`IDocumentStore`** abstraction (B2 ↔ filesystem swap) · the consent-aware document permission model · the upload-path vs read/delete-path policy split        |
+| **Database**                      | PostgreSQL 16 (Hostinger-hosted) + peer auth                                                             | The schema convention (PascalCase quoted columns + lowercase unquoted tables) · the audit-row pattern for role-affecting actions · the EF migration architecture-pause discipline |
+| **Observability**                 | Sentry (org `psinest`, two projects)                                                                     | The env-driven DSN pattern · `sendDefaultPii=false` baseline · the SPA + API split for separating client vs server exceptions                                     |
+| **Web tier**                      | nginx 1.24 + Let's Encrypt + DuckDNS                                                                     | The SPA-bundle + reverse-proxy split · the cross-repo deploy ordering (API first → 60 s wait → App)                                                              |
+| **Backups**                       | `pg_dump` + Backblaze B2 + cron                                                                          | The `psinest-pg-dump` wrapper + B2 lifecycle policy · the backup-restore-drill ops practice (untested backups are zero)                                          |
+| **CI/CD**                         | GitHub Actions + `workflow_dispatch`                                                                     | The "lint + build are the only merge gates · e2e is non-blocking smoke" policy · cross-repo PR sequencing                                                        |
+| **Build pipeline (meta)**         | [OpenClaw](https://openclaw.ai/) (v1, 7 agents) → [Hermes Agent](https://hermes-agent.nousresearch.com/) (v2, single dispatcher) | The dispatch-authorization graph (`subagents.allowAgents`), the three human-in-the-loop gates, the dev/prod co-location pattern. See [openclaw-hermes-evolution](../openclaw-hermes-evolution/) |
+| **AI capability gate (future)**   | n/a — purpose-built                                                                                      | **The AI Policy Manager** — per-capability consent · always-on PII redaction · per-capability cost budget · audit ledger · model-version pinning                  |
+
+The pattern: I don't reinvent identity, storage, or transport. I do design **the enforcement gates** that make compliance promises auditable — `RoleScope` for data access, `IDocumentStore` for document scope, the AI Policy Manager (incoming) for AI-capability access.
+
+---
+
 ## Operational practices
 
 Things that aren't visible in the architecture diagram but are essential to operating the system:
@@ -378,25 +454,56 @@ Things that aren't visible in the architecture diagram but are essential to oper
 
 ---
 
-## Related case studies in this portfolio
+## Deeper reading
+
+### Related case studies in this portfolio
 
 - [**openclaw-hermes-evolution**](../openclaw-hermes-evolution/) — the **build pipeline** that ships Psinest. Where this repo is the *product*, that one is the *factory*. Two generations of agentic build systems documented with full architecture + cost analysis.
-- [**hugo**](../hugo/) — same OpenClaw platform underneath, configured very differently (single marketing agent vs 7-agent dev team). Useful comparison for understanding when single-agent beats multi-agent.
-- [**shared-architecture-patterns**](../shared-architecture-patterns/) *(in progress)* — RoleScope.cs-style centralised tenancy, compliance-gated capability rollout, AI Policy Manager centerpieces — patterns that show up across multiple projects.
+- [**hugo**](../hugo/) — same Hermes Agent platform underneath, configured very differently (single marketing agent + MCP tools vs 7-agent dev team). Useful comparison for understanding when single-agent beats multi-agent.
+- [**shared-architecture-patterns**](../shared-architecture-patterns/) *(in progress)* — `RoleScope.cs`-style centralised tenancy, compliance-gated capability rollout, AI Policy Manager centerpieces — patterns that show up across multiple projects.
+
+### Live system
+
+- [`psinest.duckdns.org`](https://psinest.duckdns.org) — the live pilot, accessible via the four permanent demo accounts (`clinica.teste@psinest.com` / `dr.teste@psinest.com` / `patient.teste@psinest.com` / `patient.preonboard.teste@psinest.com`, all password `Psinest2026!`).
 
 ---
 
-## What's next on Psinest
+## Status
 
-Roughly in priority order:
+- [LIVE] **Current platform** — React 19 SPA + ASP.NET Core 8 API + Postgres 16 + Backblaze B2 + Firebase Auth + Sentry, all on a single Hostinger VPS. Pilot serving 10 psychologists + 1 clinic on `psinest.duckdns.org`.
+- [LIVE] **`RoleScope.cs`** — centralised JWT-derived tenancy at the EF Core query layer. Every list endpoint passes through it. Document permission model wired in.
+- [LIVE] **Document storage** — `IDocumentStore` abstraction over Backblaze B2. Consent-aware permissions. ClinicOwner blocked entirely.
+- [LIVE] **Backups + restore drill** — `pg_dump` every 6 hours to B2 `psinest-backups`. Restore drill documented and exercised.
+- [LIVE] **Observability** — Sentry on both SPA and API. Env-driven DSN, `sendDefaultPii=false`.
+- [LIVE] **Build pipeline** — Psinest ships via the [OpenClaw 7-agent team → Hermes Agent](../openclaw-hermes-evolution/) build system. Joao reviews every PR and triggers every deploy (three human gates per cycle).
+- [WIP] **Production-readiness sprint** — full e2e coverage, full Sentry rule set, content validation, permanent-domain migration plan.
+- [WIP] **AI Policy Manager** — designed; lands as the gate for the first AI capability (Document AI).
+- [WIP] **Document AI** — first AI capability scheduled to land. PII redaction proxy is the unblocker for everything downstream.
+- [WIP] **Smart Booking** — second AI capability (operational, no clinical risk) — validates the Policy Manager pattern at low-stakes before clinical-grade AI lands.
+- [TBD] **Transcription & Notes** — highest-value clinical capability; lands only after the Policy Manager + redaction layer are battle-hardened.
+- [TBD] **Clinical Insights / Treatment Planning / Patient Companion / Ops Intelligence / Knowledge Search** — remaining capability domains; lands progressively behind the same Policy Manager gates, in increasing clinical-risk order.
 
-1. **Pilot readiness** — finishing the production-readiness sprint (already in flight). Validation, full e2e coverage, full Sentry rules.
-2. **Document AI** — first AI capability to land. PII redaction layer is the unblocker for everything else.
-3. **AI Policy Manager** — once Document AI is in, every subsequent capability lands behind the Policy Manager gates.
-4. **Smart Booking** — operational AI (no clinical risk), good next step after Document AI to validate the AI Policy Manager pattern at low-stakes.
-5. **Transcription & Notes** — highest-value clinical capability but also highest-risk; needs the policy manager + redaction layer rock-solid first.
+The sequencing isn't accidental — **lowest-clinical-risk AI capabilities first** so the policy/audit machinery hardens before clinical-grade AI capabilities ride on it.
 
-The sequencing here isn't accidental — **lowest-clinical-risk AI capabilities first** so the policy/audit machinery hardens before clinical-grade AI capabilities (transcription, insights, treatment planning) land on top.
+---
+
+## Acknowledgements
+
+The platforms this case study is built on:
+
+- **Firebase Auth** (Google) — identity layer (JWT issue/verify, password reset, email+password). Cleanly scoped; never had to reach for a custom auth implementation.
+- **ASP.NET Core 8 + EF Core 8** (Microsoft, MIT) — the API runtime and ORM. The query-construction API is what makes `RoleScope.cs` possible — scope applied at query construction is strictly safer than scope applied as a client filter.
+- **PostgreSQL 16** — the data store. Peer auth + `listen_addresses = 'localhost'` is what makes localhost-only Postgres trivially safe.
+- **Backblaze B2** (S3-compatible) — document and backup storage. Order-of-magnitude cheaper than S3 at this scale, EU region available, AWS SDK works as-is.
+- **Sentry** — observability. Two-project split (SPA + API) + env-driven DSN + `sendDefaultPii=false` is the baseline I keep coming back to.
+- **nginx + Let's Encrypt + DuckDNS** — the public-edge stack. Standard, boring, works.
+- **Hostinger VPS** — the host. Pre-revenue cost discipline; the day revenue justifies it, the production stack splits to its own box.
+- **[OpenClaw](https://openclaw.ai/)** (by [@steipete](https://x.com/steipete)) and **[Hermes Agent](https://hermes-agent.nousresearch.com/)** (open source, by [Nous Research](https://nousresearch.com)) — the build-pipeline platforms that ship Psinest. Documented separately in [openclaw-hermes-evolution](../openclaw-hermes-evolution/).
+- **Claude Code CLI** (Anthropic) — the code-writing executor that does the actual implementation work in both build-pipeline generations.
+
+**`RoleScope.cs`, `IDocumentStore`, the document permission model, the AI Policy Manager pattern**, and the compliance-gated capability rollout (RGPD + ERS gates layered onto the standard data-access tier) are mine — designed for this product, documented here so the patterns are reusable in the next regulated-domain platform.
+
+The four-role product surface (ClinicOwner / Psychologist / Patient / Platform Admin) and the consent-aware document permission model are borrowed from how mental-health practice actually works — informed by working with practicing psychologists during the pilot. **Multi-role healthcare platforms work best when they mirror the actual access boundaries the practice already enforces in the analog world.**
 
 ---
 
