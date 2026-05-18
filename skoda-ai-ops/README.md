@@ -369,7 +369,7 @@ The platforms do the heavy lifting; the editorial pipeline (library + approval g
 ## Status
 
 - ✅ **v3 — current production architecture.** Cowork cockpit operational. Cowork Automations configured for the five weekly content tasks. Publishing library deployed. Telegram approval gate active. Upload-Post integration live (first post 2026-05-05). Google Ads campaigns running. Dual attribution feeding both bidders and books.
-- ✅ **Architecture diagrams (4/5).** Salesforce-style orchestration overview · content pipeline (cockpit + lanes + editorial flow) · three-human-gate approval flow · lead-capture flow with dual attribution · C4 deployment topology — all shipped. `media-generation-flow.png` (Gemini + Veo pipeline) pending.
+- ✅ **Architecture diagrams.** Five-layer system topology · editorial pipeline · three-human-gate approval flow · lead-capture / lead-funnel flow · attribution split (GA4 vs Firestore) · deployment view — all shipped as inline text-style ASCII in fenced code blocks. Media-generation flow (Gemini + Veo pipeline) pending.
 - ✅ **Case studies (4/6).** Business problem · architecture evolution · orchestration design · AI stack all in full prose. Cost routing + lessons learned in structured-outline form.
 - 🚧 **Workflows + orchestration deep-dives (9 files).** Outlined; full prose pending.
 - 🚧 **Partial code examples.** Publishing library snippets + Cloud Function excerpts pending sanitisation for public release.

@@ -277,8 +277,9 @@ Each one follows the same shape: SKILL.md with the six canonical sections, MCP s
 
 ## Enterprise topology · per-pod detail
 
-The Salesforce-style enterprise view: every tier, every integration, every security boundary. The v2 architecture diagram above shows the *shape*; this one shows what's actually running where, layer by layer.
+The full architecture, end to end: every tier, every integration, every security boundary. The v2 architecture diagram above shows the *shape*; this one shows what's actually running where, layer by layer.
 
+```text
 ══════════════════════════════════════════════════════════════════════════════
 CUSTOMER-FACING LAYER
 ══════════════════════════════════════════════════════════════════════════════
@@ -476,7 +477,7 @@ SECURITY BOUNDARIES
   · Forbidden-tokens guardrail  SKILL.md prevents leaking model / path / framework
   · State-readback discipline   state queries re-invoke tools (mode: "readback")
                                 no replay from session memory · no direct file reads
-
+```
 
 **Three things to highlight from this layout:**
 
@@ -524,13 +525,11 @@ A clean architectural decision: client ad spend is paid directly by the client o
 
 ## Architecture diagrams
 
-| File                                                       | What it shows                                                                                       |
-|------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
-| `architecture/Hugo-architecture-salesforce.excalidraw`     | Salesforce-style reference architecture — platforms + module tiles + connector pills + VPS bus      |
-| `architecture/Hugo-architecture-platform.excalidraw`       | First platform-style draft (looser composition)                                                     |
-| `architecture/Hugo-capabilities-architecture.excalidraw`   | Two-panel view: capabilities map (left) + architecture (right)                                      |
+All diagrams in this repo are inline text-style ASCII inside fenced code blocks — readable on GitHub, version-controlled, diff-able, no rendering tooling required.
 
-PNG exports of each will live alongside the source files. The diagrams open in https://excalidraw.com (drag-and-drop) or any compatible editor.
+- **v1 team topology** — the 7-agent hierarchical team (Director + 6 specialists). See [The team](#the-team) above.
+- **v2 single-agent topology** — Hugo + 8 area-scoped MCP tool namespaces. See [Architecture](#architecture) under the v2 section above.
+- **Enterprise topology · per-pod detail** — full layered view: customer-facing layer · network edge · tenant pod · brain/inference · skills library · MCP servers · HITL gate · state/audit · secrets · external integrations · admin/data spine · security boundaries. See [Enterprise topology · per-pod detail](#enterprise-topology--per-pod-detail) above.
 
 
 ---
@@ -614,7 +613,7 @@ The platforms are the heavy lifting; **Pattern C, the single-agent topology, the
 - [LIVE] **v2 (single agent + Pattern C)** — current architecture. **5 skills shipped:** `post-ad-hoc`, `presence-audit`, `post-from-content-plan`, `reporting-lead`, `compose-plan`. **5 skills in porting queue:** `ads-manager`, `website-builder`, `brand-designer`, `inbox-reviews-triage`, `outreach-assistant`.
 - [LIVE] **Live site** — https://jccosta94.github.io/hugo-website/ describes the customer-facing offering in plain language.
 - [WIP] **First customer** — paint manufacturer pivoting B2B -> consumer DIY, onboarding in progress.
-- [WIP] **Diagrams** — three Excalidraw files complete (Salesforce reference style + platform style + capabilities-architecture two-panel). PNG exports pending.
+- [LIVE] **Diagrams** — all architecture diagrams shipped as inline text-style ASCII in fenced code blocks (v1 team topology · v2 single-agent topology · enterprise per-pod detail).
 - [WIP] **Sub-docs** — `case-study/architecture-evolution.md` and `orchestration/mcp-integration.md` complete. Workflows, comparisons, examples folders TBD.
 
 

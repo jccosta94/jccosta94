@@ -99,7 +99,7 @@ Architected Cowork-mode use cases tailored to specific verticals — healthcare 
 Cross-project patterns I keep coming back to: AI routing patterns, multi-agent design, orchestration philosophy, cost-vs-quality tradeoffs, enterprise AI governance, evaluation and observability.
 
 #### 🗺️ [Diagrams Library](./diagrams/)
-Reusable architecture diagrams: enterprise RAG patterns, agentic systems, deployment topologies, orchestration patterns. Excalidraw source + PNG/SVG exports.
+Reusable architecture diagrams: enterprise RAG patterns, agentic systems, deployment topologies, orchestration patterns. All inline text-style ASCII inside fenced code blocks — readable on GitHub, version-controlled, diff-able.
 
 #### ✍️ [Writing](./writing/)
 Essays on agentic systems and the economics of AI-augmented delivery: *Lessons from building agent companies*, *AI workflow architecture*, *Model routing economics*, *Enterprise AI deployment lessons*, *Orchestration bottlenecks*.
