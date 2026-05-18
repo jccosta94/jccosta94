@@ -67,189 +67,147 @@ The lesson is also **what stayed constant.** All three generations route through
 
 ## v3 — the current architecture
 
-The system runs as five horizontal capability layers, laid out below in the [Salesforce Architect Diagramming Framework](https://medium.com/salesforce-architects) convention for readability.
+Three flow charts cover the system end to end: the **orchestrator** (how content moves from idea to live post), the **lead funnel** (how a customer becomes a tracked lead in the CRM), and the **attribution split** (why GA4 and Firestore deliberately disagree). All diagrams in this repo are text-style ASCII inside fenced code blocks — readable on GitHub, version-controlled, diff-able, no rendering tooling required.
 
-### Topology
+### The orchestrator
+
+How a draft becomes a published post. Cowork sits at the top as the cockpit; both lanes (interactive + Automations) produce the same payload shape and feed into the same publishing library. Nothing fans out to the publishing surfaces unless the library passes it and the operator approves.
 
 ```
-┌───────────────────────────────────────────────────────────────────────────────┐
-│ OPERATOR'S MAC · COCKPIT TIER · everything runs inside Cowork                   │
-├───────────────────────────────────────────────────────────────────────────────┤
-│                                                                                 │
-│ ┌─ CLAUDE COWORK · the only management surface for the system ──────────────┐│
-│ │ Anthropic Claude (Sonnet 4.6 / Opus 4.6) running in Cowork desktop app      ││
-│ │   one chat surface · one app · no separate dashboard                         ││
-│ │   the operator sits here all day to drive the content business               ││
-│ │                                                                              ││
-│ │ MCP servers loaded into Cowork (the operator's tool belt):                   ││
-│ │   firebase-mcp        Firestore CRUD · Hosting deploy · Cloud Function logs ││
-│ │   gmail-mcp           outbound email · dealer hand-off · newsletter         ││
-│ │   airtable-mcp        CRM read/write (Leads · Quotes · Commissions)         ││
-│ │   gemini-image-mcp    image generation (stdio for Cowork)                   ││
-│ │   veo-mcp             video generation                                      ││
-│ │   excalidraw-mcp      diagram authoring                                     ││
-│ │   computer-use-mcp    desktop control for one-off workflows                 ││
-│ │   scheduled-tasks-mcp Cowork's native recurring-task scheduler              ││
-│ │   skoda-mcp (custom)  publishing-library wrapper · /api/publishBlog call    ││
-│ │                                                                              ││
-│ │ INTERACTIVE LANE — operator drives Cowork in real time:                      ││
-│ │   • drafts and reviews content with Claude                                   ││
-│ │   • triggers every publishing call (via the library — never bypassed)        ││
-│ │   • reviews leads and edits CRM records                                      ││
-│ │   • generates Preisvorschlag PDFs for individual quote requests              ││
-│ │   • edits landing pages and deploys them                                     ││
-│ │   • monitors GA4 + Google Ads + Firestore quote_events                       ││
-│ │                                                                              ││
-│ │ AUTOMATION LANE — Cowork Automations · 5 recurring tasks (the weekly         ││
-│ │ cadence), configured once in Cowork's scheduled-tasks UI:                    ││
-│ │   Tue 09:00 → draft blog post → library → Telegram preview                   ││
-│ │   Wed 09:00 → draft newsletter → library → Telegram preview                  ││
-│ │   Thu 14:00 → draft LinkedIn post → library → Telegram preview               ││
-│ │   Fri 16:00 → draft Instagram post → library → Telegram preview              ││
-│ │   Sat 10:00 → draft X post → library → Telegram preview                      ││
-│ │                                                                              ││
-│ │ Both lanes call the same publishing library and route every draft to the     ││
-│ │ same Telegram approval channels. The operator only ever approves; the        ││
-│ │ approval webhook trips the publishing call.                                  ││
-│ └────────────────────────────────────────────────────────────────────────────┘│
-└───────────────────────────────────────────────────────────────────────────────┘
+                       Cowork (cockpit · operator's Mac)
+                                  │
+                                  ▼
+              ┌───────────────────┴───────────────────┐
+              ▼                                       ▼
+       ┌─────────────┐                   ┌──────────────────────┐
+       │ Interactive │                   │ Automations 📅       │   ← Cowork-native
+       │    Lane     │                   │    Lane              │     scheduler
+       │ (operator   │                   │ (5 weekly tasks:     │
+       │  at the     │                   │  Tue blog · Wed news │
+       │  keyboard)  │                   │  · Thu LI · Fri IG · │
+       │             │                   │  Sat X)              │
+       └──────┬──────┘                   └──────────┬───────────┘
+              │                                     │
+              └──────────────────┬──────────────────┘
+                                 │ same payload shape
+                                 ▼
+                      ┌──────────────────────┐
+                      │ Publishing Library 🔒│   ← ~300 LOC Python
+                      │  German-lang check   │     fail-closed
+                      │  Price-hedge regex   │     regex + heuristics
+                      │  Denylist regex      │
+                      │  Channel voice rules │
+                      └──────────┬───────────┘
+                                 │ pass (else: returns reason · retry loop)
+                                 ▼
+                      ┌──────────────────────┐
+                      │ Telegram Preview ⏸  │   ← HUMAN GATE 1
+                      │ (operator approves   │     latency: minutes
+                      │  in Telegram)        │
+                      └──────────┬───────────┘
+                                 │ approved · library re-runs (defense in depth)
+                                 ▼
+                      ┌──────────────────────┐
+                      │ Channel routing      │   ← HUMAN GATE 2
+                      │ (10/mo Upload-Post   │     rotation policy
+                      │  cap forces choice)  │
+                      └──────────┬───────────┘
+                                 │
+              ┌──────────────────┼──────────────────┐
+              ▼                  ▼                  ▼
+       ┌────────────┐    ┌──────────────┐    ┌──────────────┐
+       │ Upload-Post│    │ /api/publish │    │ Gmail SMTP   │   ← three fan-out
+       │ → YT · IG  │    │   Blog →     │    │ → newsletter │     endpoints,
+       │   X · LI   │    │   Firestore  │    │   recipients │     one payload
+       │   (gated)  │    │ → blog live  │    │              │
+       └────────────┘    └──────────────┘    └──────────────┘
+       terminal: live in audience feeds · audit in Firebase + Telegram
+```
 
-┌───────────────────────────────────────────────────────────────────────────────┐
-│ EDITORIAL PIPELINE · shared between Cowork's interactive + automation lanes     │
-├───────────────────────────────────────────────────────────────────────────────┤
-│                                                                                 │
-│  draft (text + media)                                                           │
-│         │                                                                       │
-│         ▼                                                                       │
-│  ┌──────────────────────┐                                                       │
-│  │ publishing library   │  ← Python · ~300 LOC · fail-closed                   │
-│  │  • German-lang check │     (permissive heuristic — blocks only affirmative   │
-│  │  • price-hedge regex │      English-with-zero-German)                        │
-│  │  • denylist regex    │     (regex with positive context — `ab` immediately   │
-│  │  • voice rules       │      precedes `€` value, or `Beispielrechnung`)       │
-│  └──────────┬───────────┘                                                       │
-│             │                                                                   │
-│        passed payload                                                           │
-│             │                                                                   │
-│             ▼                                                                   │
-│  ┌──────────────────────┐                                                       │
-│  │  Telegram preview    │  ← one channel per workflow:                          │
-│  │  → operator approves │     blog-approval · social-approval · newsletter-     │
-│  │  → operator rejects  │     approval                                          │
-│  └──────────┬───────────┘                                                       │
-│             │                                                                   │
-│        approved payload                                                         │
-│             │                                                                   │
-│             ▼                                                                   │
-│  ┌──────────────────────┐                                                       │
-│  │ library re-runs      │  ← defense in depth — approval was on a payload that  │
-│  │  (defense in depth)  │     might have been re-encoded since                  │
-│  └──────────┬───────────┘                                                       │
-│             │                                                                   │
-│             ▼                                                                   │
-│  ┌──────────────────────┐                                                       │
-│  │ channel routing      │  ← video → YouTube + Instagram                        │
-│  │  applied             │     photo → Instagram + X                             │
-│  └──────────┬───────────┘     text  → X · LinkedIn → opt-in (gated)             │
-│             │                                                                   │
-│             ▼                                                                   │
-│  Upload-Post API · single fan-out → social channels                             │
-│  Cloud Function `/api/publishBlog` (bearer auth) → Firestore → blog            │
-│  Gmail/SMTP → newsletter recipients                                             │
-│                                                                                 │
-└───────────────────────────────────────────────────────────────────────────────┘
+### The lead funnel
 
-┌───────────────────────────────────────────────────────────────────────────────┐
-│ LEAD-CAPTURE PIPELINE · production-customer-facing                              │
-├───────────────────────────────────────────────────────────────────────────────┤
-│                                                                                 │
-│  Customer (Germany) lands on /rabatt/<model> from organic search OR Google     │
-│  Ads · GA4 fires page_view (Consent Mode v2 default-denied)                    │
-│         │                                                                       │
-│         ▼                                                                       │
-│  Quote form → Cloud Function `/api/quote` (Firebase) →                          │
-│  Firestore `quotes` + `quote_events` collections                                │
-│         │                                                                       │
-│         ▼                                                                       │
-│  Auto-responder Cloud Function → Preisvorschlag PDF generated → Gmail SMTP →   │
-│  customer inbox · within minutes                                                │
-│         │                                                                       │
-│         ▼                                                                       │
-│  Airtable CRM record created · lead source field populated                      │
-│  (organic | google-ads · referrer · model config code)                          │
-│         │                                                                       │
-│         ▼                                                                       │
-│  ★ HUMAN GATE — dealer hand-off                                                 │
-│  Dealer pulls lead from Airtable · calls customer · closes (or not)            │
-│                                                                                 │
-└───────────────────────────────────────────────────────────────────────────────┘
+How a customer becomes a tracked lead and arrives in front of the dealer. Organic and Google Ads traffic hit the same landing page and share the same downstream pipeline; the only difference is the `lead source` field on the Airtable record. The system deliberately stops automating at the dealer call — the conversation that closes the sale is a human relationship, not a script.
 
-ATTRIBUTION LAYER (dual-tracked, deliberately divergent)
-═══════════════════════════════════════════════════════════════════════════════
-  GA4 (Consent Mode v2)
-    └─→ Google Ads conversion column          ← drives bid optimisation
-        (deduplicated, modeled, Google's loss function)
+```
+                       Customer (Germany · in-market)
+                                  │
+                                  │ organic OR google-ads
+                                  ▼
+                       ┌────────────────────────┐
+                       │ /rabatt/<model>        │   ← Firebase Hosting
+                       │  landing page          │     GA4 page_view fires
+                       └────────────┬───────────┘
+                                    │ submits quote form
+                                    ▼
+                       ┌────────────────────────┐
+                       │ /api/quote             │   ← Cloud Function
+                       │ (validate · write)     │     24h response SLA
+                       └────────────┬───────────┘
+                                    │
+              ┌─────────────────────┴─────────────────────┐
+              ▼                                           ▼
+       ┌──────────────────┐                    ┌──────────────────────┐
+       │ Firestore        │                    │ Auto-responder       │   ← Cloud Function
+       │   quotes +       │                    │   + Preisvorschlag   │     · Gmail SMTP
+       │   quote_events   │                    │     PDF              │
+       │   (truth)        │                    │                      │
+       └────────┬─────────┘                    └──────────┬───────────┘
+                │ webhook                                 │
+                ▼                                         ▼
+       ┌──────────────────┐                    ┌──────────────────────┐
+       │ Airtable CRM     │                    │ Customer inbox       │   ← within minutes
+       │   Leads · Quotes │                    │   PDF in hand        │     first impression
+       │   Commissions    │                    │                      │
+       └────────┬─────────┘                    └──────────────────────┘
+                │ lead source: organic | google-ads
+                ▼
+       ┌──────────────────┐
+       │ Dealer 📞        │   ← HUMAN GATE 3
+       │ Salesperson      │     automation ends here
+       │ pulls + calls    │     dealer is seller of record
+       └──────────────────┘
+       terminal: sale conversation is out of scope
+```
 
-  Cloud Function quote_events
-    └─→ Firestore `quote_events` collection   ← source of truth for
-        (raw, untransformed, every form fire)   commission accounting
+### The attribution split
 
-  The two will not agree. By design.
+GA4 and Firestore both capture every quote form submission. Each one is the right answer to a different question — GA4 is what Google Ads needs to optimise bids, Firestore is what the operator and the dealer need to settle commissions. Treating either as the single source of truth eventually breaks the books.
+
+```
+                    Quote form fires (every submission)
+                                  │
+                                  ▼
+              ┌───────────────────┴────────────────────┐
+              ▼                                        ▼
+       ┌──────────────────────┐               ┌──────────────────────┐
+       │ GA4 event            │               │ Firestore            │
+       │ (Consent Mode v2,    │               │   quote_events       │
+       │  default-denied)     │               │   collection         │
+       └──────────┬───────────┘               └──────────┬───────────┘
+                  │                                       │
+                  ▼                                       ▼
+       ┌──────────────────────┐               ┌──────────────────────┐
+       │ Google Ads           │               │ Commission accounting│
+       │  conversion column   │               │   + board reporting  │
+       │  (deduplicated)      │               │   (raw, untransformed)│
+       └──────────────────────┘               └──────────────────────┘
+       ← drives bid                          ← source of truth
+         optimisation                          for the business
+
+       The two will not agree. By design.
 ```
 
 ### Three human gates per content cycle
 
-```
-                       Content idea (Cowork Automation or operator)
-                                │
-                                ▼
-                          ┌──────────────┐
-                          │ Claude drafts│   ← inside Cowork: either an
-                          │  (in Cowork) │     interactive session or an
-                          └──────┬───────┘     Automation-triggered run
-                                 │
-                                 ▼
-                       Publishing library check
-                                 │
-                  ┌──────────────┴──────────────┐
-                pass                          fail
-                  │                             │
-                  │                             ▼
-                  │                     Returns reason →
-                  │                     agent revises or
-                  │                     operator decides
-                  │                             ↑
-                  │                             │
-                  │                     (retry loop)
-                  ▼
-                ★ HUMAN GATE 1 — preview approval (Telegram)
-                  │
-                  │     operator replies `ok` / `reject` / `skip`
-                  ▼
-            ┌────────────────────────────┐
-            │ Library re-runs on final   │ ← defense in depth
-            │ assembled payload          │
-            └─────────────┬──────────────┘
-                          │
-                          ▼
-                ★ HUMAN GATE 2 — rotation discipline
-                  │     (operator-imposed: 10 uploads/month cap forces
-                  │      choice — not every post goes to every channel)
-                  ▼
-                  Upload-Post API → channels go live
-                  Blog publish → Firestore → live
-                  Newsletter → Gmail SMTP → list
-                          │
-                          ▼
-                  (customer journey continues to lead-capture pipeline above)
-                          │
-                          ▼
-                ★ HUMAN GATE 3 — dealer hand-off
-                  Lead lands in Airtable · dealer pulls it · dealer calls.
-                  The system stops automating here, deliberately.
-```
+Three gates total, each catching a class of error the layer above can't:
 
-**The agents propose; the operator disposes.** This isn't an oversight in the design; it's the design. The library catches compliance violations deterministically; the operator catches judgement calls (factually wrong claims about model variants, clumsy phrasing that's technically legal but reads badly, redundancy with last week's post) the library can't reason about; the dealer catches the actual sale because no system should try to automate a relational sales conversation in this category.
+| Gate | Where it sits | Catches |
+|---|---|---|
+| **Gate 1 — Preview approval (Telegram)** | In the orchestrator, between library and channel routing | Factually wrong claims about a model variant. Clumsy phrasing that's technically legal but reads badly. Redundancy with last week's post. |
+| **Gate 2 — Rotation discipline** | In the orchestrator, between approval and fan-out | Over-publishing the same piece across every channel. Cap-aware discipline keeps reach quality high without burning the 10/mo Upload-Post cap. |
+| **Gate 3 — Dealer hand-off** | In the lead funnel, between Airtable and the sale conversation | Anything that requires a relational sales conversation. Pricing nuance the dealer can discuss in real time. Trust the dealer relationship is building with the customer. |
+
+**The agents propose; the operator disposes.** The library catches compliance violations deterministically. The operator catches judgement calls the library can't reason about. The dealer catches the actual sale because no system should try to automate a relational sales conversation in this category.
 
 ---
 
@@ -330,57 +288,17 @@ This is the kind of "designed two options, picked the simpler one, kept the othe
 
 ## Architecture diagrams
 
-All diagrams in this repo live inline in this README and in the case-study sub-docs, as text-style ASCII inside fenced code blocks — readable on GitHub, version-controlled, diff-able, no rendering tooling required.
+All diagrams in this repo are inline text-style ASCII inside fenced code blocks — readable on GitHub, version-controlled, diff-able, no rendering tooling required.
 
-- **System landscape** (5-layer Salesforce-style: persona → experience → application → integration → data, with trust boundaries) — see [Topology](#topology) above.
-- **Editorial pipeline** (draft → library → Telegram approval → publish) — see [Topology](#topology) above.
-- **Deployment view** (C4 container-level — operator's Mac + Firebase + Upload-Post + optional VPS for the headless alternative) — see below.
+- **Topology** — five-layer cockpit / editorial / acquisition / attribution / hand-off, plus the Cowork cockpit detail. See the [Topology section](#topology) above.
+- **Editorial pipeline** — draft → library → Telegram approval → publish, with channel routing. See the [Topology section](#topology) above.
+- **Orchestrator flow chart** — how a draft becomes a published post end-to-end. See [The orchestrator](#the-orchestrator) above.
+- **Lead funnel flow chart** — how a public visitor becomes a tracked CRM lead. See [Lead funnel](#lead-funnel) above.
+- **Attribution split flow chart** — why GA4 and Firestore deliberately disagree, and which optimiser consumes which copy. See [Attribution split](#attribution-split) above.
+- **Three-human-gates flow** — preview approval · channel-rotation discipline · CRM hand-off boundary. See the [Topology section](#topology) above.
+- **Deployment view** — operator Mac + Firebase + Upload-Post + Telegram + optional VPS (the headless alternative kept warm but not running). See [Alternative deployment — headless agent on a VPS](#alternative-deployment--headless-agent-on-a-vps) above.
 
-### Deployment view
-
-```text
-+----------------------------------------------------------------------+
-| OPERATOR'S MAC (always-on, primary)                                  |
-|   +-----------------------------------------------------------+      |
-|   | Claude Cowork (desktop app)                              |      |
-|   |   + MCP servers (Firebase, Gmail, Airtable, Gemini,      |      |
-|   |     Veo, Excalidraw, computer-use, scheduled-tasks,      |      |
-|   |     custom skoda-mcp)                                    |      |
-|   |   + Python publishing library (~300 LOC)                 |      |
-|   +-----------------------------------------------------------+      |
-+-------------------------+-----------------------+--------------------+
-                          |                       |
-                          | (HTTPS, bearer auth)  | (HTTPS, OAuth)
-                          v                       v
-+--------------------------+   +----------------------------------------+
-| FIREBASE (Google Cloud)  |   | UPLOAD-POST.COM                        |
-|   Firestore              |   |   single fan-out to YouTube /          |
-|     leads, quote_events, |   |   Instagram / X / LinkedIn (free tier  |
-|     content_drafts       |   |   capped at 10 uploads/month)          |
-|   Hosting                |   +----------------------------------------+
-|     skoda-clever-kaufen  |
-|     blog + landing pages |   +----------------------------------------+
-|   Cloud Functions        |   | TELEGRAM BOT API                       |
-|     /api/publishBlog     |<--+   preview approval channels:           |
-|     (bearer auth)        |   |   blog-approval / social-approval /    |
-+--------------------------+   |   newsletter-approval                  |
-                               +----------------------------------------+
-
-+----------------------------------------------------------------------+
-| OPTIONAL HEADLESS ALTERNATIVE (warm-but-not-running)                 |
-|   Hostinger VPS · Docker · OpenClaw or Hermes Agent                  |
-|   Same publishing library, same Telegram approval flow, same         |
-|   Firebase + Upload-Post endpoints. One config-mirror away if the    |
-|   operator's day stops covering the engagement window.               |
-+----------------------------------------------------------------------+
-
-GA4 + Google Ads sit outside the operator's perimeter: GA4 receives
-events from the public blog (Consent Mode v2, default-denied); Ads
-consumes GA4 conversions for bid optimisation. Firestore
-`quote_events` is the source-of-truth attribution copy.
-```
-
-Diagrams that are out of scope today and don't yet have an inline ASCII rendering: `content-pipeline` (covered partially by the editorial-pipeline ASCII above), `publishing-workflow`, `media-generation-flow`. These will get inline ASCII when the matching sections of the case study are written.
+Not yet rendered: a media-generation flow (Gemini Nano Banana + Veo 3.1 pipeline) — will land as inline ASCII when the matching section of the case study is written.
 
 ---
 
@@ -451,7 +369,7 @@ The platforms do the heavy lifting; the editorial pipeline (library + approval g
 ## Status
 
 - ✅ **v3 — current production architecture.** Cowork cockpit operational. Cowork Automations configured for the five weekly content tasks. Publishing library deployed. Telegram approval gate active. Upload-Post integration live (first post 2026-05-05). Google Ads campaigns running. Dual attribution feeding both bidders and books.
-- ✅ **Architecture diagrams (2/5).** Salesforce-style orchestration overview + C4 deployment topology shipped. Three more (`content-pipeline`, `publishing-workflow`, `media-generation-flow`) pending.
+- ✅ **Architecture diagrams (4/5).** Salesforce-style orchestration overview · content pipeline (cockpit + lanes + editorial flow) · three-human-gate approval flow · lead-capture flow with dual attribution · C4 deployment topology — all shipped. `media-generation-flow.png` (Gemini + Veo pipeline) pending.
 - ✅ **Case studies (4/6).** Business problem · architecture evolution · orchestration design · AI stack all in full prose. Cost routing + lessons learned in structured-outline form.
 - 🚧 **Workflows + orchestration deep-dives (9 files).** Outlined; full prose pending.
 - 🚧 **Partial code examples.** Publishing library snippets + Cloud Function excerpts pending sanitisation for public release.
