@@ -64,22 +64,24 @@ The original Hugo design (April 2026) was a hierarchical agent team modelled aft
 
 ### The team
 
+```text
                       Telegram (per-tenant bot)
                                 |
                                 v
-                       +------------------+
-                       |   Director        |   <-- customer-facing
+                       +-------------------+
+                       |     Director      |   <-- customer-facing
                        |  (gpt-5.4-mini)   |
-                       +--------+----------+
-                                | dispatches to specialists
-            +----------+--------+--------+-----------+----------+
-            v          v        v        v           v          v
-       +--------+ +--------+ +------+ +------+ +----------+ +----------+
-       | Perf   | | Web    | |Brand | |Inbox | | Outbound | | Analytics|
-       |Marketer| |  Dev   | |      | |      | |          | |          |
-       +--------+ +--------+ +------+ +------+ +----------+ +----------+
+                       +---------+---------+
+                                 | dispatches to specialists
+        +-----------+------------+------------+------------+------------+
+        v           v            v            v            v            v
+   +---------+ +---------+ +---------+ +---------+ +-----------+ +-----------+
+   |  Perf   | |   Web   | |  Brand  | |  Inbox  | | Outbound  | | Analytics |
+   | Marketer| |   Dev   | |Designer | |   Mgr   | | Specialist| |           |
+   +---------+ +---------+ +---------+ +---------+ +-----------+ +-----------+
 
-       all specialists: gpt-5.4-mini · terminal (no further dispatch)
+   all specialists: gpt-5.4-mini · terminal (no further dispatch)
+```
 
 
 ### Agent roster
@@ -146,23 +148,28 @@ The collapse: 7 agents -> 1 agent + 8 MCP tool namespaces. Customer-facing exper
 
 ### Architecture
 
-                       Telegram (per-tenant bot)
-                                  |
-                                  v
-                          +----------------+
-                          |    Hugo        |   <-- customer-facing
-                          | (gpt-5.4-mini) |
-                          +--------+-------+
-                                   | one MCP tool call per turn
-                                   |
-        +-----------+-----------+--+--+----------+----------+-------+----------+
-        v           v           v     v          v          v       v          v
-   marketing__  creative__   web__  inbox__  outbound__  analytics__ audit__  content_plan__
-   Google /     Veo 3 /      LPs   IG       SendGrid    GA4         presence  content
-   Meta Ads     Imagen /     GBP   replies  SEO         Stripe      audits    plan exec
-                Nano Banana
+```text
+                              Telegram (per-tenant bot)
+                                         |
+                                         v
+                                 +----------------+
+                                 |      Hugo      |   <-- customer-facing
+                                 | (gpt-5.4-mini) |
+                                 +--------+-------+
+                                          | one MCP tool call per turn
+                                          v
++-----------------+--------------------------+-------------+------------------+
+| marketing__     | creative__               | web__       | inbox__          |
+|   Google Ads    |   Veo 3                  |   LPs       |   IG replies     |
+|   Meta Ads      |   Imagen / Nano Banana   |   GBP       |                  |
++-----------------+--------------------------+-------------+------------------+
+| outbound__      | analytics__              | audit__     | content_plan__   |
+|   SendGrid      |   GA4                    |   presence  |   content plan   |
+|   SEO           |   Stripe                 |   audits    |   exec           |
++-----------------+--------------------------+-------------+------------------+
 
-   Each server: Python · PEP 723 inline deps · run.sh shim · area-scoped (multiple skills per server)
+Each server: Python · PEP 723 inline deps · run.sh shim · area-scoped (multiple skills per server)
+```
 
 
 ### Pattern C
