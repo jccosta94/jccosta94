@@ -437,26 +437,6 @@ All diagrams in this repo live inline in this README, as text-style ASCII inside
 
 ---
 
-## Deeper reading
-
-### Comparisons (the case for v2 over v1, with numbers)
-- [`comparisons/cost-analysis.md`](./comparisons/cost-analysis.md) — **start here.** Per-agent monthly burn, v1 vs v2, with the math. 5 agents on Opus 4.6 is the cost driver.
-- [`comparisons/throughput-analysis.md`](./comparisons/throughput-analysis.md) *(TBD)* — what we gave up moving to v2, measured in PRs/week and time-to-ship.
-- [`comparisons/model-routing.md`](./comparisons/model-routing.md) *(TBD)* — which model for which agent role, and why the v2 single-executor pattern works.
-- [`comparisons/architectural-tradeoffs.md`](./comparisons/architectural-tradeoffs.md) *(TBD)* — team-of-7 hierarchy vs single dispatcher; when each makes sense.
-
-### Workflows (how an issue moves through the pipeline)
-- [`workflows/agent-lifecycle.md`](./workflows/agent-lifecycle.md) *(TBD)* — v1: CEO → PM → Dev → QA hand-off. v2: Hermes → Claude Code dispatch.
-- [`workflows/task-routing.md`](./workflows/task-routing.md) *(TBD)* — how the `agent:dev` / `hermes-ready` labels route issues.
-- [`workflows/code-generation-flow.md`](./workflows/code-generation-flow.md) *(TBD)* — full issue → PR → merge → deploy chain.
-
-### Case study (the v1 → v2 story)
-- [`case-study/v1-lessons.md`](./case-study/v1-lessons.md) *(TBD)* — what we learned running the OpenClaw 7-agent team in production.
-- [`case-study/v2-lessons.md`](./case-study/v2-lessons.md) *(TBD)* — what we learned after the cutover to Hermes.
-- [`case-study/operational-insights.md`](./case-study/operational-insights.md) *(TBD)* — patterns that worked across both platforms.
-
----
-
 ## How to sequence the generations
 
 This is not a "pick one" decision — it's a sequence. Learned by going through it.
@@ -580,6 +560,26 @@ The platforms are the heavy lifting; the team design and operational architectur
 | Deploy target | Hostinger VPS via GitHub Actions `workflow_dispatch` | Same — neither generation deploys; Joao still triggers manually |
 | Auto-recovery | `/root/dev-watchdog.sh` via cron every 10 min | SOUL.md instructs PR-state check before re-dispatch |
 | Audit trail | Per-agent SQLite memory + session JSONL files | `runlog/` directory with status, log, prompts, output |
+
+---
+
+## Deeper reading
+
+### Comparisons (the case for v2 over v1, with numbers)
+- [`comparisons/cost-analysis.md`](./comparisons/cost-analysis.md) — **start here.** Per-agent monthly burn, v1 vs v2, with the math. 5 agents on Opus 4.6 is the cost driver.
+- [`comparisons/throughput-analysis.md`](./comparisons/throughput-analysis.md) *(TBD)* — what we gave up moving to v2, measured in PRs/week and time-to-ship.
+- [`comparisons/model-routing.md`](./comparisons/model-routing.md) *(TBD)* — which model for which agent role, and why the v2 single-executor pattern works.
+- [`comparisons/architectural-tradeoffs.md`](./comparisons/architectural-tradeoffs.md) *(TBD)* — team-of-7 hierarchy vs single dispatcher; when each makes sense.
+
+### Workflows (how an issue moves through the pipeline)
+- [`workflows/agent-lifecycle.md`](./workflows/agent-lifecycle.md) *(TBD)* — v1: CEO → PM → Dev → QA hand-off. v2: Hermes → Claude Code dispatch.
+- [`workflows/task-routing.md`](./workflows/task-routing.md) *(TBD)* — how the `agent:dev` / `hermes-ready` labels route issues.
+- [`workflows/code-generation-flow.md`](./workflows/code-generation-flow.md) *(TBD)* — full issue → PR → merge → deploy chain.
+
+### Case study (the v1 → v2 story)
+- [`case-study/v1-lessons.md`](./case-study/v1-lessons.md) *(TBD)* — what we learned running the OpenClaw 7-agent team in production.
+- [`case-study/v2-lessons.md`](./case-study/v2-lessons.md) *(TBD)* — what we learned after the cutover to Hermes.
+- [`case-study/operational-insights.md`](./case-study/operational-insights.md) *(TBD)* — patterns that worked across both platforms.
 
 ---
 

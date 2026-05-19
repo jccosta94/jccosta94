@@ -302,31 +302,6 @@ Not yet rendered: a media-generation flow (Gemini Nano Banana + Veo 3.1 pipeline
 
 ---
 
-## Deeper reading
-
-### Case study (the v1 → v2 → v3 story)
-- [`case-study/business-problem.md`](./case-study/business-problem.md) — the one-operator constraint, why a traditional content stack doesn't solve it, why paid + organic both belong in the mix
-- [`case-study/architecture-evolution.md`](./case-study/architecture-evolution.md) — v1 → v2 → v3 narrative; each version's failure mode explains the next version's choices
-- [`case-study/orchestration-design.md`](./case-study/orchestration-design.md) — the technical centerpiece: two-agent split, library as hard layer, Telegram gate, single-fan-out trade-off, hand-off boundary
-- [`case-study/ai-stack.md`](./case-study/ai-stack.md) — model routing by job, why MCP is the integration plane, what's not in the stack and why
-- [`case-study/cost-routing.md`](./case-study/cost-routing.md) — production vs acquisition cost buckets, organic-as-volume vs Google-Ads-as-precision, what gets cut first
-- [`case-study/lessons-learned.md`](./case-study/lessons-learned.md) — prompt-gated guardrails don't survive contact with regulation · "ab Lager" is not a price hedge · attribution as directional vs gospel · the kill switch matters
-
-### Workflows (how a piece of content moves through the pipeline)
-- [`workflows/blog-generation.md`](./workflows/blog-generation.md) — cron-triggered weekly draft → image gen → library → Telegram preview → `/api/publishBlog` → Firestore
-- [`workflows/social-post-pipeline.md`](./workflows/social-post-pipeline.md) — caption + media → library → preview → Upload-Post fan-out
-- [`workflows/veo-video-workflow.md`](./workflows/veo-video-workflow.md) — when to generate fresh, when to reuse beds, cost discipline
-- [`workflows/approval-routing.md`](./workflows/approval-routing.md) — Telegram channels per workflow class, what gets rejected, audit trail
-- [`workflows/publishing-orchestration.md`](./workflows/publishing-orchestration.md) — approved-draft → final-payload → library-rerun → Upload-Post call
-
-### Orchestration deep-dives
-- [`orchestration/mcp-integration.md`](./orchestration/mcp-integration.md) — the MCP servers in the system, stdio vs SSE transports, the launchd-supervised pattern
-- [`orchestration/agent-routing.md`](./orchestration/agent-routing.md) — Cowork's interactive lane vs Automation lane, what they share, why a single cockpit beat the two-runtime alternative
-- [`orchestration/scheduling-logic.md`](./orchestration/scheduling-logic.md) — Cowork Automations configuration, the 10:00–21:00 schedule window, the 5 weekly content jobs, missed-window handling
-- [`orchestration/model-selection.md`](./orchestration/model-selection.md) — routing by job, why local models are fallback-only, what would change the stack
-
----
-
 ## What I designed vs what the platforms provide
 
 | Concern | Platform provides | My architectural contribution |
@@ -363,6 +338,31 @@ The platforms do the heavy lifting; the editorial pipeline (library + approval g
 | **CRM** | [Airtable](https://airtable.com) workspace `Skoda Referrals` — Leads · Quotes · Commissions · dealer-hand-off view |
 | **Observability** | Firebase Functions logs · Telegram error alerts (per-cron-job ID) · Upload-Post usage tracker (warns at 8/10 monthly cap) |
 | **Kill switch** | `.env.upload-post` → `.env.upload-post.disabled` — halts all publishing instantly; script refuses to run without the key |
+
+---
+
+## Deeper reading
+
+### Case study (the v1 → v2 → v3 story)
+- [`case-study/business-problem.md`](./case-study/business-problem.md) — the one-operator constraint, why a traditional content stack doesn't solve it, why paid + organic both belong in the mix
+- [`case-study/architecture-evolution.md`](./case-study/architecture-evolution.md) — v1 → v2 → v3 narrative; each version's failure mode explains the next version's choices
+- [`case-study/orchestration-design.md`](./case-study/orchestration-design.md) — the technical centerpiece: two-agent split, library as hard layer, Telegram gate, single-fan-out trade-off, hand-off boundary
+- [`case-study/ai-stack.md`](./case-study/ai-stack.md) — model routing by job, why MCP is the integration plane, what's not in the stack and why
+- [`case-study/cost-routing.md`](./case-study/cost-routing.md) — production vs acquisition cost buckets, organic-as-volume vs Google-Ads-as-precision, what gets cut first
+- [`case-study/lessons-learned.md`](./case-study/lessons-learned.md) — prompt-gated guardrails don't survive contact with regulation · "ab Lager" is not a price hedge · attribution as directional vs gospel · the kill switch matters
+
+### Workflows (how a piece of content moves through the pipeline)
+- [`workflows/blog-generation.md`](./workflows/blog-generation.md) — cron-triggered weekly draft → image gen → library → Telegram preview → `/api/publishBlog` → Firestore
+- [`workflows/social-post-pipeline.md`](./workflows/social-post-pipeline.md) — caption + media → library → preview → Upload-Post fan-out
+- [`workflows/veo-video-workflow.md`](./workflows/veo-video-workflow.md) — when to generate fresh, when to reuse beds, cost discipline
+- [`workflows/approval-routing.md`](./workflows/approval-routing.md) — Telegram channels per workflow class, what gets rejected, audit trail
+- [`workflows/publishing-orchestration.md`](./workflows/publishing-orchestration.md) — approved-draft → final-payload → library-rerun → Upload-Post call
+
+### Orchestration deep-dives
+- [`orchestration/mcp-integration.md`](./orchestration/mcp-integration.md) — the MCP servers in the system, stdio vs SSE transports, the launchd-supervised pattern
+- [`orchestration/agent-routing.md`](./orchestration/agent-routing.md) — Cowork's interactive lane vs Automation lane, what they share, why a single cockpit beat the two-runtime alternative
+- [`orchestration/scheduling-logic.md`](./orchestration/scheduling-logic.md) — Cowork Automations configuration, the 10:00–21:00 schedule window, the 5 weekly content jobs, missed-window handling
+- [`orchestration/model-selection.md`](./orchestration/model-selection.md) — routing by job, why local models are fallback-only, what would change the stack
 
 ---
 

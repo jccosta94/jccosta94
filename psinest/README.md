@@ -281,25 +281,6 @@ Healthcare documents are the most sensitive surface; permissions are intricate.
 
 ---
 
-## Stack
-
-| Tier | Technology · Version |
-|---|---|
-| **Frontend** | React 19 · TypeScript · Vite 8 · Tailwind 4 · Recharts · i18n (pt-PT default) |
-| **Backend** | ASP.NET Core 8 · EF Core 8 · Kestrel · Firebase Admin SDK |
-| **Database** | PostgreSQL 16 · `psinest` db · peer-auth |
-| **Document store** | Backblaze B2 (S3-compatible) · psinest-uploads · accessed via AWS S3 .NET SDK · `IDocumentStore` abstraction |
-| **Auth** | Firebase Auth · project `psinestv2` · email+password · JWT |
-| **Observability** | Sentry · org `psinest` · 2 projects (dotnet-aspnetcore + psinest-app) |
-| **Web server** | nginx 1.24 · Let's Encrypt TLS · HTTP→HTTPS redirect |
-| **DNS** | DuckDNS (dynamic DNS) · `psinest.duckdns.org` |
-| **Hosting** | Hostinger VPS · Ubuntu 24.04 · 1 vCPU · 3.8 GB RAM |
-| **Backups** | `pg_dump` cron · 4×/day · → Backblaze B2 psinest-backups bucket |
-| **CI/CD** | GitHub Actions · `workflow_dispatch` (manual) · lint + build merge gates |
-| **Built by** | [OpenClaw 7-agent team](../openclaw-hermes-evolution/) → migrated to [Hermes Agent single dispatcher](../openclaw-hermes-evolution/) |
-
----
-
 ## Compliance + regulatory architecture
 
 Mental health data in Portugal is regulated by **RGPD** (EU GDPR national implementation) and **ERS** (Entidade Reguladora da Saúde — Portuguese health regulator). Psinest's architecture has to anticipate these from day one.
@@ -441,6 +422,25 @@ The pattern: I don't reinvent identity, storage, or transport. I do design **the
 
 ---
 
+## Stack
+
+| Tier | Technology · Version |
+|---|---|
+| **Frontend** | React 19 · TypeScript · Vite 8 · Tailwind 4 · Recharts · i18n (pt-PT default) |
+| **Backend** | ASP.NET Core 8 · EF Core 8 · Kestrel · Firebase Admin SDK |
+| **Database** | PostgreSQL 16 · `psinest` db · peer-auth |
+| **Document store** | Backblaze B2 (S3-compatible) · psinest-uploads · accessed via AWS S3 .NET SDK · `IDocumentStore` abstraction |
+| **Auth** | Firebase Auth · project `psinestv2` · email+password · JWT |
+| **Observability** | Sentry · org `psinest` · 2 projects (dotnet-aspnetcore + psinest-app) |
+| **Web server** | nginx 1.24 · Let's Encrypt TLS · HTTP→HTTPS redirect |
+| **DNS** | DuckDNS (dynamic DNS) · `psinest.duckdns.org` |
+| **Hosting** | Hostinger VPS · Ubuntu 24.04 · 1 vCPU · 3.8 GB RAM |
+| **Backups** | `pg_dump` cron · 4×/day · → Backblaze B2 psinest-backups bucket |
+| **CI/CD** | GitHub Actions · `workflow_dispatch` (manual) · lint + build merge gates |
+| **Built by** | [OpenClaw 7-agent team](../openclaw-hermes-evolution/) → migrated to [Hermes Agent single dispatcher](../openclaw-hermes-evolution/) |
+
+---
+
 ## Operational practices
 
 Things that aren't visible in the architecture diagram but are essential to operating the system:
@@ -470,18 +470,18 @@ Things that aren't visible in the architecture diagram but are essential to oper
 
 ## Status
 
-- [LIVE] **Current platform** — React 19 SPA + ASP.NET Core 8 API + Postgres 16 + Backblaze B2 + Firebase Auth + Sentry, all on a single Hostinger VPS. Pilot serving 10 psychologists + 1 clinic on `psinest.duckdns.org`.
-- [LIVE] **`RoleScope.cs`** — centralised JWT-derived tenancy at the EF Core query layer. Every list endpoint passes through it. Document permission model wired in.
-- [LIVE] **Document storage** — `IDocumentStore` abstraction over Backblaze B2. Consent-aware permissions. ClinicOwner blocked entirely.
-- [LIVE] **Backups + restore drill** — `pg_dump` every 6 hours to B2 `psinest-backups`. Restore drill documented and exercised.
-- [LIVE] **Observability** — Sentry on both SPA and API. Env-driven DSN, `sendDefaultPii=false`.
-- [LIVE] **Build pipeline** — Psinest ships via the [OpenClaw 7-agent team → Hermes Agent](../openclaw-hermes-evolution/) build system. Joao reviews every PR and triggers every deploy (three human gates per cycle).
-- [WIP] **Production-readiness sprint** — full e2e coverage, full Sentry rule set, content validation, permanent-domain migration plan.
-- [WIP] **AI Policy Manager** — designed; lands as the gate for the first AI capability (Document AI).
-- [WIP] **Document AI** — first AI capability scheduled to land. PII redaction proxy is the unblocker for everything downstream.
-- [WIP] **Smart Booking** — second AI capability (operational, no clinical risk) — validates the Policy Manager pattern at low-stakes before clinical-grade AI lands.
-- [TBD] **Transcription & Notes** — highest-value clinical capability; lands only after the Policy Manager + redaction layer are battle-hardened.
-- [TBD] **Clinical Insights / Treatment Planning / Patient Companion / Ops Intelligence / Knowledge Search** — remaining capability domains; lands progressively behind the same Policy Manager gates, in increasing clinical-risk order.
+- ✅ **Current platform** — React 19 SPA + ASP.NET Core 8 API + Postgres 16 + Backblaze B2 + Firebase Auth + Sentry, all on a single Hostinger VPS. Pilot serving 10 psychologists + 1 clinic on `psinest.duckdns.org`.
+- ✅ **`RoleScope.cs`** — centralised JWT-derived tenancy at the EF Core query layer. Every list endpoint passes through it. Document permission model wired in.
+- ✅ **Document storage** — `IDocumentStore` abstraction over Backblaze B2. Consent-aware permissions. ClinicOwner blocked entirely.
+- ✅ **Backups + restore drill** — `pg_dump` every 6 hours to B2 `psinest-backups`. Restore drill documented and exercised.
+- ✅ **Observability** — Sentry on both SPA and API. Env-driven DSN, `sendDefaultPii=false`.
+- ✅ **Build pipeline** — Psinest ships via the [OpenClaw 7-agent team → Hermes Agent](../openclaw-hermes-evolution/) build system. Joao reviews every PR and triggers every deploy (three human gates per cycle).
+- 🚧 **Production-readiness sprint** — full e2e coverage, full Sentry rule set, content validation, permanent-domain migration plan.
+- 🚧 **AI Policy Manager** — designed; lands as the gate for the first AI capability (Document AI).
+- 🚧 **Document AI** — first AI capability scheduled to land. PII redaction proxy is the unblocker for everything downstream.
+- 🚧 **Smart Booking** — second AI capability (operational, no clinical risk) — validates the Policy Manager pattern at low-stakes before clinical-grade AI lands.
+- 🚧 **Transcription & Notes** — highest-value clinical capability; lands only after the Policy Manager + redaction layer are battle-hardened.
+- 🚧 **Clinical Insights / Treatment Planning / Patient Companion / Ops Intelligence / Knowledge Search** — remaining capability domains; lands progressively behind the same Policy Manager gates, in increasing clinical-risk order.
 
 The sequencing isn't accidental — **lowest-clinical-risk AI capabilities first** so the policy/audit machinery hardens before clinical-grade AI capabilities ride on it.
 
