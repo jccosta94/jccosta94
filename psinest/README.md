@@ -64,14 +64,14 @@ Captured from the live product at [psinest.duckdns.org](https://psinest.duckdns.
 
 | | |
 |---|---|
-| ![Landing + sign-in](./screenshots/01-landing.png) | ![Patient space — sessions](./screenshots/02-patient-sessions.png) |
-| **Landing + sign-in** — public marketing landing page with role-specific routing after authentication via Firebase. | **Patient space — sessions** — patient's own session history, with psy-attached homework on `/patient/dynamics/:id` (read-only) and self-upload documents at `/patient/documents`. |
-| ![Psychologist — patient detail](./screenshots/03-psy-patient-detail.png) | ![Psychologist — session notes](./screenshots/04-psy-session-notes.png) |
-| **Psychologist — patient detail** — caseload view with patient-attached dynamics, document timeline, partnership status. Psy sees only patients in their partnered clinics. | **Psychologist — session notes** — note-taking surface with future-state hooks for AI-augmented transcription + SOAP-note drafting (see roadmap below). |
-| ![Clinic Owner — dashboard](./screenshots/05-owner-dashboard.png) | ![Clinic Owner — reports + analytics](./screenshots/06-owner-reports.png) |
-| **Clinic Owner — dashboard** — psy roster, partnership status, aggregate metrics. Owner never sees patient data; document access blocked entirely at `RoleScope` layer. | **Clinic Owner — reports + analytics** — Recharts-driven cancellation + turnover analytics with per-clinic threshold (1–5 sessions, default 3) and scope selector. |
-| ![Admin — psy verification queue](./screenshots/07-admin-verification.png) | ![Document upload + permissions](./screenshots/08-documents.png) |
-| **Admin — psy verification queue** — Platform Admin reviews OPP / cédula credentials before activating new psychologist accounts. ERS compliance gate. | **Document upload + permissions** — `IDocumentStore` → Backblaze B2 storage with consent-aware permissions (patient self-upload vs psy-attached docs vs ClinicOwner blocked). |
+| ![Public landing page](./screenshots/01-landing.png) | ![Patient — home & activities](./screenshots/02-patient-sessions.png) |
+| **Public landing page** — Portuguese marketing surface with role-specific routing after authentication via Firebase. The product positions itself as the platform that unites clinics, psychologists, and patients. | **Patient — home & activities** — patient dashboard with next session, session count, pending activities, and psy-attached dynamics (homework). Sidebar nav exposes Sessions / Chat / Activities / Documents / Premium Content / Profile. |
+| ![Psychologist — patient detail](./screenshots/03-psy-patient-detail.png) | ![Psychologist — weekly calendar](./screenshots/04-psy-session-notes.png) |
+| **Psychologist — patient detail** — per-patient profile, patient-journey link (session history + case formulation + clinical documentation), cancellation-risk surface. Psy sees only patients in their partnered clinics — enforced server-side at `RoleScope`, no client filtering. | **Psychologist — weekly calendar** — week view with completed (green), scheduled (blue), and cancelled (red strikethrough) sessions across multiple consultórios. Session-notes drill-down lives one click in; the calendar is the workflow anchor. |
+| ![Clinic Owner — dashboard](./screenshots/05-owner-dashboard.png) | ![Clinic Owner — reports & analytics](./screenshots/06-owner-reports.png) |
+| **Clinic Owner — dashboard** — psychologists / patients / sessions / partnerships / locations stat cards + recent sessions log. Owner never sees patient clinical data; document access blocked entirely at the `RoleScope` layer. | **Clinic Owner — reports & analytics** — operational vs financial split, time-range selector, session-status donut breakdown (cancelled / completed / in-progress / no-show / scheduled), and mode breakdown. "Volume only — no clinical content" is the explicit policy. |
+| | ![Patient — documents](./screenshots/08-documents.png) |
+| *Admin — psy verification queue (ERS compliance gate where Platform Admin reviews OPP / cédula credentials before activating new psychologist accounts) — captured separately.* | **Patient — documents** — patient's own document space with Upload action. Policy text ("PDF or image, up to 25 MB. Documents attached to a dynamic show their source.") is consent-aware: patient can read/upload/delete own documents; ClinicOwner is blocked entirely; psy sees only after partnership + consent rows exist. |
 
 ---
 
