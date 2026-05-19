@@ -214,6 +214,27 @@ Three gates total, each catching a class of error the layer above can't:
 
 **The agents propose; the operator disposes.** The library catches compliance violations deterministically. The operator catches judgement calls the library can't reason about. The dealer catches the actual sale because no system should try to automate a relational sales conversation in this category.
 
+### The instruction layer
+
+Cowork ships as a generalist. What makes it behave like a Skoda specialist instead of a generic Claude session is a small instruction layer Cowork reads at session start — global rules first, then project-specific.
+
+**Global** (`~/CLAUDE.md`) — personal cross-project preferences: memory-management policy, the four-file project-scaffold rule, working-style guidance. Loads for every Cowork session regardless of which project is open.
+
+**Project-specific** — four files at the project root, loaded when Cowork is opened in this folder:
+
+```text
+skoda-clever-kaufen/
+├── CLAUDE.md       # voice · compliance rules · project IDs · deploy commands
+├── memory.md       # running log of decisions and learnings
+├── tasks.md        # live work — current focus, in progress, up next
+└── Context/        # stable reference files, one topic each
+                    #   brand-voice.md · publishing-playbook.md ·
+                    #   compliance-phrases.md · deploy-runbook.md ·
+                    #   content-calendar.md · supplier-templates.md
+```
+
+The pattern is what turns "Claude Cowork" into "Claude Cowork that knows this business." Decisions in flight live in `memory.md`; durable reference material gets promoted to a dedicated file in `Context/`; finished work clears from `tasks.md`. No bespoke configuration UI — the layer is just markdown files Cowork reads on its own. **The instruction layer is the third architectural piece alongside the cockpit and the publishing library: it's how the cockpit gets configured for a specific business without writing a single line of platform code.**
+
 ---
 
 ## v1 → v2 → v3 — what failed, what survived
@@ -303,6 +324,7 @@ All diagrams in this repo are inline text-style ASCII inside fenced code blocks 
 - **Lead funnel flow chart** — how a public visitor becomes a tracked CRM lead, organic and paid both routed through the same landing → quote → Airtable → dealer pipeline. See [The lead funnel](#the-lead-funnel) above.
 - **Attribution split flow chart** — why GA4 (for Google Ads bid optimisation) and Firestore (for commission accounting) deliberately disagree, and which optimiser consumes which copy. See [The attribution split](#the-attribution-split) above.
 - **Three-human-gates table** — preview approval · channel-rotation discipline · CRM hand-off boundary. See [Three human gates per content cycle](#three-human-gates-per-content-cycle) above.
+- **Instruction-layer tree** — global `~/CLAUDE.md` + project-specific `CLAUDE.md` / `memory.md` / `tasks.md` / `Context/` four-file scaffold. See [The instruction layer](#the-instruction-layer) above.
 
 Not yet rendered: a media-generation flow (Gemini Nano Banana + Veo 3.1 pipeline) — will land as inline ASCII when the matching section of the case study is written.
 
@@ -313,6 +335,7 @@ Not yet rendered: a media-generation flow (Gemini Nano Banana + Veo 3.1 pipeline
 | Concern | Platform provides | My architectural contribution |
 |---|---|---|
 | **Operator cockpit** | [Claude Cowork](https://claude.com/cowork) — desktop AI app, Anthropic Claude with MCP-tool support, file-system access, computer-use | Configured Cowork as the *only* management surface for the business — wired in the MCP servers (firebase, gmail, airtable, gemini-image, veo, excalidraw, computer-use, custom skoda-mcp), authored the skill library (16 marketing skills) the operator invokes from inside Cowork, made the architectural bet to not build a separate admin UI |
+| **Instruction layer** | Cowork loads `~/CLAUDE.md` at session start and project-root `CLAUDE.md` when opened in a folder — the framework is there | Authored the **global `~/CLAUDE.md`** (cross-project memory policy + project-scaffold rule + working-style guidance) and the **project-specific four-file scaffold** for `skoda-clever-kaufen/`: `CLAUDE.md` (voice · compliance · project IDs · deploy commands) · `memory.md` (running decision log) · `tasks.md` (live work) · `Context/` directory (brand-voice · publishing-playbook · compliance-phrases · deploy-runbook · content-calendar · supplier-templates) |
 | **Reasoning model** | [Anthropic Claude](https://www.anthropic.com/claude) (the model that powers Cowork and OpenClaw) | Per-job model routing — Claude for editorial, Gemini for image, Veo for video, Ollama as resilience fallback only |
 | **Web hosting + serverless** | [Firebase](https://firebase.google.com) (Hosting, Cloud Functions, Firestore, Auth) | Trust-boundary scoping (single project), bearer-auth `/api/publishBlog`, Firestore `quote_events` as source-of-truth attribution collection |
 | **Multi-channel publishing** | [Upload-Post](https://upload-post.com) — REST API fan-out to YouTube, Instagram, X, LinkedIn | Rotation policy (video → YT+IG; photo → IG+X; text → X), LinkedIn-gated config until Company Page reconnect, integration gotcha (`title` vs `text` field) documented in dispatch |
@@ -325,7 +348,7 @@ Not yet rendered: a media-generation flow (Gemini Nano Banana + Veo 3.1 pipeline
 | **CRM** | [Airtable](https://airtable.com) — base + view + automations | Schema (Leads · Quotes · Commissions tables), lead-source field, dealer-hand-off view |
 | **Dealer hand-off boundary** | N/A — this is a business-process decision | Made it the explicit stopping point of automation — system delivers a clean lead, dealer makes the call, no SMS chatter, no automated nurture |
 
-The platforms do the heavy lifting; the editorial pipeline (library + approval gate + rotation policy + attribution model) and the operational architecture (two-agent split + 10:00–21:00 window + dealer-hand-off boundary) are mine.
+The platforms do the heavy lifting; the editorial pipeline (library + approval gate + rotation policy + attribution model), the operational architecture (two-agent split + 10:00–21:00 window + dealer-hand-off boundary), and the instruction layer (global + project-scaffold markdown files that turn Cowork into a Skoda specialist) are mine.
 
 ---
 
@@ -334,6 +357,7 @@ The platforms do the heavy lifting; the editorial pipeline (library + approval g
 | Layer | Component |
 |---|---|
 | **Operator cockpit** | **[Claude Cowork](https://claude.com/cowork)** desktop app — Anthropic Claude (Sonnet/Opus) · MCP server fleet (Firebase, Gmail, Airtable, Gemini Image, Veo, Excalidraw, computer-use, scheduled-tasks, custom skoda-mcp) · skills library (16 marketing skills) · the *only* surface the operator uses to manage the business |
+| **Instruction layer** | Global `~/CLAUDE.md` + project-root four-file scaffold (`CLAUDE.md` · `memory.md` · `tasks.md` · `Context/`) — markdown-only configuration, no platform code, Cowork loads at session start |
 | **Scheduled drafting** | **Cowork Automations** — native recurring-task feature inside Cowork · 5 weekly content tasks (blog · newsletter · LinkedIn · Instagram · X) · 10:00–21:00 DE schedule window · every Automation output passes through the same publishing library and Telegram approval channels as interactive drafts |
 | **Customer-facing web** | Firebase Hosting · Cloud Functions (`/api/quote`, `/api/publishBlog`, auto-responder) · Cloud Firestore |
 | **Analytics + paid acquisition** | GA4 with Consent Mode v2 (default-denied) · Google Ads (search + Performance Max) · Firestore `quote_events` source-of-truth attribution |
@@ -375,7 +399,8 @@ The platforms do the heavy lifting; the editorial pipeline (library + approval g
 ## Status
 
 - ✅ **v3 — current production architecture.** Cowork cockpit operational. Cowork Automations configured for the five weekly content tasks. Publishing library deployed. Telegram approval gate active. Upload-Post integration live (first post 2026-05-05). Google Ads campaigns running. Dual attribution feeding both bidders and books.
-- ✅ **Architecture diagrams.** Orchestrator flow chart · lead funnel · attribution split · three-human-gates table · deployment view — all shipped as inline text-style ASCII in fenced code blocks. Media-generation flow (Gemini + Veo pipeline) pending.
+- ✅ **Instruction layer in place.** Global `~/CLAUDE.md` + project-root four-file scaffold (`CLAUDE.md` · `memory.md` · `tasks.md` · `Context/`) committed to the project folder. Cowork loads them at session start.
+- ✅ **Architecture diagrams.** Orchestrator flow chart · lead funnel · attribution split · three-human-gates table · instruction-layer tree — all shipped as inline text-style ASCII in fenced code blocks. Media-generation flow (Gemini + Veo pipeline) pending.
 - ✅ **Case studies (4/6).** Business problem · architecture evolution · orchestration design · AI stack all in full prose. Cost routing + lessons learned in structured-outline form.
 - 🚧 **Workflows + orchestration deep-dives (9 files).** Outlined; full prose pending.
 - 🚧 **Partial code examples.** Publishing library snippets + Cloud Function excerpts pending sanitisation for public release.
